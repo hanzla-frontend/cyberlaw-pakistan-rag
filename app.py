@@ -14,7 +14,7 @@ from groq import Groq
 
 
 # =========================================================
-# CONFIGURATION
+# APP CONFIG
 # =========================================================
 
 APP_TITLE = "CyberLaw Pakistan AI"
@@ -41,7 +41,7 @@ DEFAULT_MODEL = os.getenv(
 
 
 # =========================================================
-# PAGE CONFIG
+# PAGE
 # =========================================================
 
 st.set_page_config(
@@ -67,29 +67,31 @@ if "page" not in st.session_state:
 
 
 # =========================================================
-# CUSTOM CSS
+# THEME CSS
 # =========================================================
 
 def apply_theme(theme):
 
     if theme == "Dark":
-        bg = "#09090f"
-        card = "#11131c"
-        card2 = "#171925"
-        text = "#f5f7ff"
-        muted = "#9ca3b5"
-        border = "#292d3d"
+
+        bg = "#080b12"
+        card = "#111722"
+        card2 = "#171e2b"
+        text = "#f8fafc"
+        muted = "#c5cedb"
+        border = "#2b3545"
         accent = "#ff7a18"
         accent2 = "#ff9f43"
-        input_bg = "#10121a"
+        input_bg = "#0d131d"
 
     else:
+
         bg = "#f5f7fb"
         card = "#ffffff"
-        card2 = "#f0f2f7"
-        text = "#171923"
-        muted = "#687083"
-        border = "#dfe3ec"
+        card2 = "#f0f3f8"
+        text = "#111827"
+        muted = "#596579"
+        border = "#d9e0ea"
         accent = "#e85d04"
         accent2 = "#ff7a18"
         input_bg = "#ffffff"
@@ -98,300 +100,259 @@ def apply_theme(theme):
         f"""
         <style>
 
-        /* =========================
+        /* =================================================
            GLOBAL
-        ========================= */
+           ================================================= */
 
         .stApp {{
-            background:
-                radial-gradient(
-                    circle at 10% 10%,
-                    rgba(255,122,24,0.08),
-                    transparent 30%
-                ),
-                radial-gradient(
-                    circle at 90% 80%,
-                    rgba(255,159,67,0.06),
-                    transparent 30%
-                ),
-                {bg};
+            background: {bg};
+        }}
+
+        .main {{
             color: {text};
         }}
 
-        html, body, [class*="css"] {{
-            font-family:
-                Inter,
-                -apple-system,
-                BlinkMacSystemFont,
-                "Segoe UI",
-                sans-serif;
+        /* =================================================
+           REMOVE EXTRA STREAMLIT TOP SPACE
+           ================================================= */
+
+        .block-container {{
+            padding-top: 2rem;
+            padding-bottom: 2rem;
         }}
 
-        /* =========================
+        /* =================================================
+           HERO
+           ================================================= */
+
+        .hero {{
+            background: {card};
+            border: 1px solid {border};
+            border-radius: 24px;
+            padding: 32px;
+            margin-bottom: 26px;
+            animation: slideDown 0.55s ease;
+            box-shadow: 0 15px 45px rgba(0, 0, 0, 0.08);
+        }}
+
+        .hero-title {{
+            color: {text} !important;
+            font-size: 42px;
+            font-weight: 800;
+            line-height: 1.2;
+            letter-spacing: -1px;
+            margin: 0;
+        }}
+
+        .hero-title span {{
+            color: {accent} !important;
+        }}
+
+        .hero-subtitle {{
+            color: {muted} !important;
+            font-size: 16px;
+            line-height: 1.7;
+            margin-top: 12px;
+            max-width: 850px;
+        }}
+
+        /* =================================================
+           BADGES
+           ================================================= */
+
+        .badge-container {{
+            margin-top: 20px;
+        }}
+
+        .badge {{
+            display: inline-block;
+            color: {accent} !important;
+            background: rgba(255, 122, 24, 0.12);
+            border: 1px solid rgba(255, 122, 24, 0.30);
+            padding: 6px 12px;
+            border-radius: 50px;
+            font-size: 12px;
+            font-weight: 700;
+            margin-right: 6px;
+            margin-bottom: 5px;
+        }}
+
+        /* =================================================
+           FEATURE CARDS
+           ================================================= */
+
+        .feature-card {{
+            background: {card};
+            border: 1px solid {border};
+            border-radius: 18px;
+            padding: 20px;
+            min-height: 145px;
+            color: {text} !important;
+            animation: slideUp 0.5s ease;
+            transition: all 0.25s ease;
+        }}
+
+        .feature-card:hover {{
+            transform: translateY(-4px);
+            border-color: {accent};
+        }}
+
+        .feature-icon {{
+            font-size: 28px;
+            margin-bottom: 8px;
+        }}
+
+        .feature-title {{
+            color: {text} !important;
+            font-size: 17px;
+            font-weight: 700;
+        }}
+
+        .feature-text {{
+            color: {muted} !important;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-top: 6px;
+        }}
+
+        /* =================================================
+           GENERAL CARDS
+           ================================================= */
+
+        .custom-card {{
+            background: {card};
+            border: 1px solid {border};
+            border-radius: 20px;
+            padding: 22px;
+            color: {text} !important;
+            animation: slideUp 0.5s ease;
+        }}
+
+        .custom-card h3,
+        .custom-card h4,
+        .custom-card p {{
+            color: {text} !important;
+        }}
+
+        /* =================================================
            SIDEBAR
-           ========================= */
+           ================================================= */
 
         section[data-testid="stSidebar"] {{
             background: {card};
             border-right: 1px solid {border};
         }}
 
-        section[data-testid="stSidebar"] > div {{
-            padding-top: 1.5rem;
+        section[data-testid="stSidebar"] * {{
+            color: {text};
         }}
 
-        /* =========================
-           HEADER
-           ========================= */
-
-        .hero {{
-            padding: 30px;
-            border-radius: 24px;
-            background:
-                linear-gradient(
-                    135deg,
-                    {card},
-                    {card2}
-                );
-            border: 1px solid {border};
-            margin-bottom: 25px;
-            animation: slideDown 0.6s ease;
-            box-shadow:
-                0 15px 45px rgba(0,0,0,0.08);
-        }}
-
-        .hero-title {{
-            font-size: 42px;
-            font-weight: 800;
-            margin: 0;
-            letter-spacing: -1px;
-        }}
-
-        .hero-title span {{
-            color: {accent};
-        }}
-
-        .hero-subtitle {{
-            margin-top: 10px;
-            color: {muted};
-            font-size: 16px;
-            line-height: 1.6;
-        }}
-
-        /* =========================
-           CARDS
-           ========================= */
-
-        .card {{
-            background: {card};
-            border: 1px solid {border};
-            border-radius: 20px;
-            padding: 22px;
-            margin-bottom: 18px;
-            animation: slideUp 0.5s ease;
-            transition: all 0.25s ease;
-        }}
-
-        .card:hover {{
-            transform: translateY(-2px);
-            border-color: {accent};
-            box-shadow:
-                0 12px 30px rgba(0,0,0,0.08);
-        }}
-
-        .feature-card {{
-            background:
-                linear-gradient(
-                    145deg,
-                    {card},
-                    {card2}
-                );
-            border: 1px solid {border};
-            border-radius: 18px;
-            padding: 20px;
-            min-height: 130px;
-            animation: slideUp 0.5s ease;
-        }}
-
-        .feature-icon {{
-            font-size: 28px;
-        }}
-
-        .feature-title {{
-            font-size: 17px;
-            font-weight: 700;
-            margin-top: 8px;
-        }}
-
-        .feature-text {{
-            color: {muted};
-            font-size: 13px;
-            margin-top: 6px;
-            line-height: 1.5;
-        }}
-
-        /* =========================
+        /* =================================================
            CHAT
-           ========================= */
+           ================================================= */
 
         .user-message {{
-            background:
-                linear-gradient(
-                    135deg,
-                    {accent},
-                    {accent2}
-                );
-            color: white;
+            background: linear-gradient(
+                135deg,
+                {accent},
+                {accent2}
+            );
+            color: #ffffff !important;
             padding: 15px 18px;
             border-radius: 18px 18px 5px 18px;
-            margin: 10px 0 10px auto;
-            max-width: 80%;
+            margin: 12px 0 12px auto;
+            max-width: 82%;
             animation: slideRight 0.35s ease;
+        }}
+
+        .user-message strong {{
+            color: #ffffff !important;
         }}
 
         .assistant-message {{
             background: {card};
             border: 1px solid {border};
-            color: {text};
+            color: {text} !important;
             padding: 18px;
             border-radius: 18px 18px 18px 5px;
-            margin: 10px auto 10px 0;
-            max-width: 90%;
+            margin: 12px auto 12px 0;
+            max-width: 92%;
             animation: slideLeft 0.35s ease;
         }}
 
-        /* =========================
-           SOURCE CARDS
-           ========================= */
+        .assistant-message strong {{
+            color: {accent} !important;
+        }}
+
+        .assistant-message * {{
+            color: inherit;
+        }}
+
+        /* =================================================
+           SOURCES
+           ================================================= */
 
         .source-card {{
             background: {card2};
             border-left: 4px solid {accent};
-            padding: 12px 15px;
-            margin: 8px 0;
+            padding: 14px 16px;
+            margin: 10px 0;
             border-radius: 10px;
-            color: {text};
-            font-size: 13px;
+            color: {text} !important;
         }}
 
         .source-title {{
+            color: {text} !important;
             font-weight: 700;
         }}
 
         .source-page {{
-            color: {muted};
+            color: {muted} !important;
             font-size: 12px;
+            margin-top: 3px;
         }}
 
-        /* =========================
+        .source-text {{
+            color: {text} !important;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-top: 10px;
+        }}
+
+        /* =================================================
            COMPLAINT
-           ========================= */
+           ================================================= */
 
         .complaint-header {{
-            padding: 25px;
-            border-radius: 20px;
             background:
                 linear-gradient(
                     135deg,
-                    rgba(255,122,24,0.14),
+                    rgba(255, 122, 24, 0.14),
                     {card}
                 );
             border: 1px solid {border};
+            border-radius: 22px;
+            padding: 28px;
+            margin-bottom: 25px;
             animation: slideDown 0.5s ease;
         }}
 
         .complaint-title {{
-            font-size: 30px;
+            color: {text} !important;
+            font-size: 32px;
             font-weight: 800;
         }}
 
         .complaint-subtitle {{
-            color: {muted};
-            line-height: 1.6;
+            color: {muted} !important;
+            font-size: 15px;
+            line-height: 1.7;
+            margin-top: 8px;
         }}
 
-        /* =========================
-           BADGES
-           ========================= */
-
-        .badge {{
-            display: inline-block;
-            padding: 6px 12px;
-            border-radius: 999px;
-            background: rgba(255,122,24,0.12);
-            color: {accent};
-            border: 1px solid rgba(255,122,24,0.25);
-            font-size: 12px;
-            font-weight: 700;
-            margin-right: 6px;
-        }}
-
-        /* =========================
-           ANIMATIONS
-           ========================= */
-
-        @keyframes slideUp {{
-            from {{
-                opacity: 0;
-                transform: translateY(25px);
-            }}
-            to {{
-                opacity: 1;
-                transform: translateY(0);
-            }}
-        }}
-
-        @keyframes slideDown {{
-            from {{
-                opacity: 0;
-                transform: translateY(-25px);
-            }}
-            to {{
-                opacity: 1;
-                transform: translateY(0);
-            }}
-        }}
-
-        @keyframes slideLeft {{
-            from {{
-                opacity: 0;
-                transform: translateX(-25px);
-            }}
-            to {{
-                opacity: 1;
-                transform: translateX(0);
-            }}
-        }}
-
-        @keyframes slideRight {{
-            from {{
-                opacity: 0;
-                transform: translateX(25px);
-            }}
-            to {{
-                opacity: 1;
-                transform: translateX(0);
-            }}
-        }}
-
-        /* =========================
-           BUTTONS
-           ========================= */
-
-        .stButton > button {{
-            border-radius: 12px;
-            border: 1px solid {border};
-            transition: all 0.2s ease;
-        }}
-
-        .stButton > button:hover {{
-            border-color: {accent};
-            transform: translateY(-1px);
-        }}
-
-        /* =========================
-           INPUT
-           ========================= */
+        /* =================================================
+           INPUTS
+           ================================================= */
 
         .stTextInput input,
         .stTextArea textarea {{
@@ -401,15 +362,104 @@ def apply_theme(theme):
             border-radius: 12px !important;
         }}
 
-        /* =========================
+        .stTextInput input:focus,
+        .stTextArea textarea:focus {{
+            border-color: {accent} !important;
+            box-shadow: 0 0 0 1px {accent} !important;
+        }}
+
+        .stTextInput input::placeholder,
+        .stTextArea textarea::placeholder {{
+            color: {muted} !important;
+            opacity: 0.8;
+        }}
+
+        /* =================================================
+           BUTTONS
+           ================================================= */
+
+        .stButton > button {{
+            border-radius: 12px;
+            border: 1px solid {border};
+            min-height: 42px;
+            transition: all 0.2s ease;
+        }}
+
+        .stButton > button:hover {{
+            border-color: {accent};
+            transform: translateY(-1px);
+        }}
+
+        /* =================================================
+           SELECTBOX / SLIDER
+           ================================================= */
+
+        div[data-baseweb="select"] > div {{
+            background: {input_bg};
+            border-color: {border};
+        }}
+
+        /* =================================================
            FOOTER
-           ========================= */
+           ================================================= */
 
         .footer {{
             text-align: center;
             color: {muted};
-            padding: 30px;
+            padding: 35px 10px 10px;
             font-size: 12px;
+        }}
+
+        /* =================================================
+           ANIMATIONS
+           ================================================= */
+
+        @keyframes slideUp {{
+            from {{
+                opacity: 0;
+                transform: translateY(20px);
+            }}
+
+            to {{
+                opacity: 1;
+                transform: translateY(0);
+            }}
+        }}
+
+        @keyframes slideDown {{
+            from {{
+                opacity: 0;
+                transform: translateY(-20px);
+            }}
+
+            to {{
+                opacity: 1;
+                transform: translateY(0);
+            }}
+        }}
+
+        @keyframes slideLeft {{
+            from {{
+                opacity: 0;
+                transform: translateX(-20px);
+            }}
+
+            to {{
+                opacity: 1;
+                transform: translateX(0);
+            }}
+        }}
+
+        @keyframes slideRight {{
+            from {{
+                opacity: 0;
+                transform: translateX(20px);
+            }}
+
+            to {{
+                opacity: 1;
+                transform: translateX(0);
+            }}
         }}
 
         </style>
@@ -422,15 +472,17 @@ apply_theme(st.session_state.theme)
 
 
 # =========================================================
-# GROQ KEY
+# GROQ API KEY
 # =========================================================
 
 def get_groq_key():
 
     try:
         key = st.secrets.get("GROQ_API_KEY")
+
         if key:
             return key
+
     except Exception:
         pass
 
@@ -443,53 +495,79 @@ def get_groq_key():
 
 def download_pdf():
 
-    if PDF_FILE.exists() and PDF_FILE.stat().st_size > 1000:
-        return True
+    if PDF_FILE.exists():
+
+        if PDF_FILE.stat().st_size > 1000:
+
+            try:
+                with open(PDF_FILE, "rb") as file:
+                    if file.read(5) == b"%PDF-":
+                        return True
+            except Exception:
+                pass
 
     try:
+
         urllib.request.urlretrieve(
             PDF_URL,
             PDF_FILE
         )
 
-        # Basic validation
-        with open(PDF_FILE, "rb") as f:
-            header = f.read(5)
+        with open(PDF_FILE, "rb") as file:
+            header = file.read(5)
 
         if header != b"%PDF-":
-            PDF_FILE.unlink(missing_ok=True)
+
+            PDF_FILE.unlink(
+                missing_ok=True
+            )
+
             return False
 
         return True
 
     except Exception:
-        PDF_FILE.unlink(missing_ok=True)
+
+        PDF_FILE.unlink(
+            missing_ok=True
+        )
+
         return False
 
 
 # =========================================================
-# TEXT CLEANING
+# CLEAN TEXT
 # =========================================================
 
 def clean_text(text):
 
     text = text.replace("\x00", " ")
-    text = re.sub(r"\s+", " ", text)
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
 
     return text.strip()
 
 
 # =========================================================
-# PDF EXTRACTION
+# EXTRACT PDF
 # =========================================================
 
 def extract_pdf():
 
-    reader = PdfReader(str(PDF_FILE))
+    reader = PdfReader(
+        str(PDF_FILE)
+    )
 
     pages = []
 
-    for page_number, page in enumerate(reader.pages, start=1):
+    for page_number, page in enumerate(
+        reader.pages,
+        start=1
+    ):
 
         try:
             text = page.extract_text() or ""
@@ -499,10 +577,11 @@ def extract_pdf():
         text = clean_text(text)
 
         if text:
+
             pages.append(
                 {
                     "page": page_number,
-                    "text": text,
+                    "text": text
                 }
             )
 
@@ -510,7 +589,7 @@ def extract_pdf():
 
 
 # =========================================================
-# CHUNKING
+# CHUNK PDF
 # =========================================================
 
 def create_chunks(
@@ -532,14 +611,14 @@ def create_chunks(
 
             end = start + chunk_size
 
-            chunk_text = text[start:end]
+            chunk = text[start:end]
 
-            if len(chunk_text.strip()) > 80:
+            if len(chunk.strip()) > 80:
 
                 chunks.append(
                     {
-                        "text": chunk_text.strip(),
-                        "page": page,
+                        "text": chunk.strip(),
+                        "page": page
                     }
                 )
 
@@ -561,18 +640,23 @@ def load_embedding_model():
 
 
 # =========================================================
-# HASH
+# FILE HASH
 # =========================================================
 
 def calculate_hash():
 
     sha = hashlib.sha256()
 
-    with open(PDF_FILE, "rb") as f:
+    with open(
+        PDF_FILE,
+        "rb"
+    ) as file:
 
         while True:
 
-            data = f.read(1024 * 1024)
+            data = file.read(
+                1024 * 1024
+            )
 
             if not data:
                 break
@@ -583,7 +667,7 @@ def calculate_hash():
 
 
 # =========================================================
-# BUILD DATABASE
+# BUILD VECTOR DATABASE
 # =========================================================
 
 def build_database(force=False):
@@ -621,9 +705,12 @@ def build_database(force=False):
 
     pages = extract_pdf()
 
-    chunks = create_chunks(pages)
+    chunks = create_chunks(
+        pages
+    )
 
     if not chunks:
+
         raise ValueError(
             "No readable text was found in the PDF."
         )
@@ -639,7 +726,7 @@ def build_database(force=False):
         texts,
         convert_to_numpy=True,
         normalize_embeddings=True,
-        show_progress_bar=False,
+        show_progress_bar=False
     )
 
     embeddings = embeddings.astype(
@@ -652,7 +739,9 @@ def build_database(force=False):
         dimension
     )
 
-    index.add(embeddings)
+    index.add(
+        embeddings
+    )
 
     faiss.write_index(
         index,
@@ -661,7 +750,10 @@ def build_database(force=False):
 
     np.save(
         CHUNKS_FILE,
-        np.array(chunks, dtype=object)
+        np.array(
+            chunks,
+            dtype=object
+        )
     )
 
     META_FILE.write_text(
@@ -688,12 +780,15 @@ def retrieve(
     query_embedding = model.encode(
         [question],
         convert_to_numpy=True,
-        normalize_embeddings=True,
+        normalize_embeddings=True
     ).astype("float32")
 
     scores, indices = index.search(
         query_embedding,
-        min(top_k, len(chunks))
+        min(
+            top_k,
+            len(chunks)
+        )
     )
 
     results = []
@@ -706,13 +801,11 @@ def retrieve(
         if idx < 0:
             continue
 
-        item = chunks[idx]
-
         results.append(
             {
-                "text": item["text"],
-                "page": item["page"],
-                "score": float(score),
+                "text": chunks[idx]["text"],
+                "page": chunks[idx]["page"],
+                "score": float(score)
             }
         )
 
@@ -720,28 +813,26 @@ def retrieve(
 
 
 # =========================================================
-# CONTEXT
+# CREATE CONTEXT
 # =========================================================
 
 def create_context(results):
 
-    context_parts = []
+    context = []
 
     for i, item in enumerate(
         results,
         start=1
     ):
 
-        context_parts.append(
+        context.append(
             f"""
 [Source {i}, Page {item["page"]}]
 {item["text"]}
 """
         )
 
-    return "\n".join(
-        context_parts
-    )
+    return "\n".join(context)
 
 
 # =========================================================
@@ -756,11 +847,10 @@ def create_system_prompt(
 ):
 
     return f"""
-You are CyberLaw Pakistan AI, a legal-information
-RAG assistant focused on Pakistani cyber law.
+You are CyberLaw Pakistan AI.
 
-Your answers must be grounded in the retrieved
-document provided by the application.
+You are a legal-information RAG assistant focused
+on Pakistani cyber law.
 
 USER PREFERENCES
 ----------------
@@ -769,64 +859,84 @@ Response size: {response_size}
 Language: {language}
 Answer style: {answer_style}
 
-IMPORTANT LEGAL RULES
---------------------
-1. Do not invent laws, sections, penalties,
-   authorities, procedures, or legal claims.
+LEGAL ACCURACY
+--------------
+1. Use the retrieved document as the primary source.
 
-2. Only mention a section number when supported
-   by the retrieved evidence.
+2. Never invent:
+   - sections
+   - laws
+   - penalties
+   - authorities
+   - procedures
+   - legal claims
 
-3. If the retrieved document does not contain
-   enough information, clearly say so.
+3. Mention section numbers only when supported
+   by retrieved evidence.
 
-4. Distinguish between:
+4. If the evidence is insufficient, clearly say:
+   "The available source does not provide enough
+   information to answer this confidently."
+
+5. Separate:
    - Legal provision
    - Explanation
    - Practical implication
 
-5. Cite relevant evidence using:
+6. Cite important claims using:
    [Source X, Page Y]
 
-6. Do not claim that an AI response is an official
+7. Do not present the AI response as an official
    legal opinion.
 
-7. For legal uncertainty, recommend consulting
-   a qualified Pakistani lawyer or the relevant
-   official authority.
+8. Recommend verification with a qualified lawyer
+   or relevant official authority when appropriate.
 
 CYBER SAFETY
 ------------
-Do not provide instructions for:
-- hacking accounts
-- malware creation
+Do not provide operational instructions for:
+- hacking
 - credential theft
+- malware
 - unauthorized access
 - cyber fraud
 - bypassing security
 - evading law enforcement
 
-If a user asks for harmful cyber instructions,
-refuse the operational instructions and instead
-provide lawful defensive or legal information.
+For harmful requests, refuse the operational
+instructions and provide lawful defensive/legal
+information instead.
 
 COMPLAINTS
 ----------
-If the user asks for help preparing a cybercrime
-complaint, create a structured complaint draft
-based only on the facts supplied by the user and
-legal provisions supported by the retrieved evidence.
+If the user asks for a cybercrime complaint draft:
 
-Clearly label it:
+- Create a professional structured draft.
+- Use only facts supplied by the user.
+- Use only legal provisions supported by evidence.
+- Never fabricate facts or section numbers.
+- Clearly label it:
+
 "AI-generated complaint draft — verify before submission."
 
-Do not fabricate names, dates, evidence, sections,
-or authorities.
+The draft can contain:
+- Subject
+- Complainant information
+- Incident details
+- Platform
+- Date/time
+- Evidence
+- Relevant legal provision
+- Requested action
+- Declaration
+
+Do not claim that the generated complaint has
+already been submitted to an authority.
 """
 
 
 # =========================================================
-# GROQ REQUEST
+# GROQ
 # =========================================================
 
 def ask_groq(
@@ -842,6 +952,7 @@ def ask_groq(
     api_key = get_groq_key()
 
     if not api_key:
+
         raise RuntimeError(
             "GROQ_API_KEY is not configured."
         )
@@ -854,20 +965,24 @@ def ask_groq(
         technical_level,
         response_size,
         language,
-        answer_style,
+        answer_style
     )
 
     user_prompt = f"""
-Retrieved legal evidence:
+RETRIEVED LEGAL EVIDENCE
+========================
 
 {context}
 
-User question:
+USER QUESTION
+=============
 
 {question}
 
 Answer using the retrieved evidence.
-Cite important claims.
+
+Cite important legal claims.
+Do not invent unsupported information.
 """
 
     response = client.chat.completions.create(
@@ -877,13 +992,13 @@ Cite important claims.
         messages=[
             {
                 "role": "system",
-                "content": system_prompt,
+                "content": system_prompt
             },
             {
                 "role": "user",
-                "content": user_prompt,
-            },
-        ],
+                "content": user_prompt
+            }
+        ]
     )
 
     return response.choices[0].message.content
@@ -898,43 +1013,54 @@ with st.sidebar:
     st.markdown(
         """
         <div style="
-            font-size:24px;
+            font-size:26px;
             font-weight:800;
-            margin-bottom:5px;
+            margin-bottom:3px;
         ">
-        ⚖️ CyberLaw
+            ⚖️ CyberLaw
         </div>
 
         <div style="
-            color:#9ca3b5;
             font-size:13px;
+            opacity:0.7;
             margin-bottom:25px;
         ">
-        Pakistan Legal AI
+            Pakistan Legal AI
         </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
     st.markdown("### Navigation")
 
-    page = st.radio(
-        "Select page",
+    selected_page = st.radio(
+        "Navigation",
         [
             "AI Assistant",
             "File a Complaint",
-            "About",
+            "About"
         ],
-        label_visibility="collapsed",
+        index=[
+            "AI Assistant",
+            "File a Complaint",
+            "About"
+        ].index(
+            st.session_state.page
+        ),
+        label_visibility="collapsed"
     )
 
-    st.session_state.page = page
+    if selected_page != st.session_state.page:
+
+        st.session_state.page = selected_page
+
+        st.rerun()
 
     st.divider()
 
     st.markdown("### Appearance")
 
-    theme = st.radio(
+    selected_theme = st.radio(
         "Theme",
         ["Dark", "Light"],
         index=(
@@ -943,12 +1069,12 @@ with st.sidebar:
             else 1
         ),
         horizontal=True,
-        label_visibility="collapsed",
+        label_visibility="collapsed"
     )
 
-    if theme != st.session_state.theme:
+    if selected_theme != st.session_state.theme:
 
-        st.session_state.theme = theme
+        st.session_state.theme = selected_theme
 
         st.rerun()
 
@@ -962,8 +1088,8 @@ with st.sidebar:
             "Beginner",
             "Intermediate",
             "Advanced",
-            "Legal / Professional",
-        ],
+            "Legal / Professional"
+        ]
     )
 
     response_size = st.selectbox(
@@ -972,9 +1098,9 @@ with st.sidebar:
             "Short",
             "Medium",
             "Detailed",
-            "Very detailed",
+            "Very detailed"
         ],
-        index=1,
+        index=1
     )
 
     language = st.selectbox(
@@ -982,8 +1108,8 @@ with st.sidebar:
         [
             "English",
             "Urdu",
-            "Roman Urdu",
-        ],
+            "Roman Urdu"
+        ]
     )
 
     answer_style = st.selectbox(
@@ -992,54 +1118,54 @@ with st.sidebar:
             "Simple explanation",
             "Legal analysis",
             "Step-by-step",
-            "Practical scenario",
-        ],
+            "Practical scenario"
+        ]
     )
 
     top_k = st.slider(
         "Retrieved sources",
-        3,
-        10,
-        5,
+        min_value=3,
+        max_value=10,
+        value=5
     )
 
     model_name = st.text_input(
         "Groq model",
-        value=DEFAULT_MODEL,
+        value=DEFAULT_MODEL
     )
 
     show_sources = st.checkbox(
         "Show retrieved sources",
-        value=True,
+        value=True
     )
 
     st.divider()
 
     if st.button(
         "🔄 Rebuild knowledge base",
-        use_container_width=True,
+        use_container_width=True
     ):
 
-        if INDEX_FILE.exists():
-            INDEX_FILE.unlink()
+        for file in [
+            INDEX_FILE,
+            CHUNKS_FILE,
+            META_FILE
+        ]:
 
-        if CHUNKS_FILE.exists():
-            CHUNKS_FILE.unlink()
-
-        if META_FILE.exists():
-            META_FILE.unlink()
+            if file.exists():
+                file.unlink()
 
         st.cache_resource.clear()
 
         st.success(
-            "Knowledge base marked for rebuild."
+            "Knowledge base will be rebuilt."
         )
 
         st.rerun()
 
     if st.button(
         "🗑️ Clear chat",
-        use_container_width=True,
+        use_container_width=True
     ):
 
         st.session_state.messages = []
@@ -1048,18 +1174,21 @@ with st.sidebar:
 
 
 # =========================================================
-# DATABASE INITIALIZATION
+# DATABASE
 # =========================================================
 
 if not download_pdf():
 
     st.error(
         """
-        Unable to download the Pakistan cyber-law PDF.
+        ### PDF download failed
 
-        Check that the Google Drive file is shared as:
+        Make sure the Google Drive PDF is shared as:
 
         **Anyone with the link → Viewer**
+
+        The application cannot build the knowledge
+        base until the PDF is accessible.
         """
     )
 
@@ -1070,17 +1199,17 @@ try:
 
     index, chunks = build_database()
 
-except Exception as e:
+except Exception as error:
 
     st.error(
-        f"Knowledge base error: {e}"
+        f"Knowledge base error: {error}"
     )
 
     st.stop()
 
 
 # =========================================================
-# AI ASSISTANT PAGE
+# AI ASSISTANT
 # =========================================================
 
 if st.session_state.page == "AI Assistant":
@@ -1099,106 +1228,132 @@ if st.session_state.page == "AI Assistant":
                 understand them in simple language.
             </div>
 
-            <br>
-
-            <span class="badge">RAG Powered</span>
-            <span class="badge">Pakistan Law</span>
-            <span class="badge">Groq AI</span>
-            <span class="badge">Source Based</span>
+            <div class="badge-container">
+                <span class="badge">RAG Powered</span>
+                <span class="badge">Pakistan Law</span>
+                <span class="badge">Groq AI</span>
+                <span class="badge">Source Based</span>
+            </div>
 
         </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
-    # Feature cards
+    # =====================================================
+    # FEATURES
+    # =====================================================
 
-    c1, c2, c3, c4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4)
 
-    with c1:
+    with col1:
+
         st.markdown(
             """
             <div class="feature-card">
+
                 <div class="feature-icon">⚖️</div>
+
                 <div class="feature-title">
                     Legal Analysis
                 </div>
+
                 <div class="feature-text">
-                    Understand cyber-law provisions
-                    from the indexed legal document.
+                    Understand Pakistani cyber-law
+                    provisions using your legal source.
                 </div>
+
             </div>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
 
-    with c2:
+    with col2:
+
         st.markdown(
             """
             <div class="feature-card">
+
                 <div class="feature-icon">🔎</div>
+
                 <div class="feature-title">
                     RAG Search
                 </div>
+
                 <div class="feature-text">
-                    Retrieve relevant pages before
-                    generating an answer.
+                    Search relevant legal passages
+                    before generating an answer.
                 </div>
+
             </div>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
 
-    with c3:
+    with col3:
+
         st.markdown(
             """
             <div class="feature-card">
+
                 <div class="feature-icon">🌐</div>
+
                 <div class="feature-title">
                     Multiple Languages
                 </div>
+
                 <div class="feature-text">
-                    Ask and receive explanations in
-                    English, Urdu or Roman Urdu.
+                    Get explanations in English,
+                    Urdu or Roman Urdu.
                 </div>
+
             </div>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
 
-    with c4:
+    with col4:
+
         st.markdown(
             """
             <div class="feature-card">
+
                 <div class="feature-icon">📝</div>
+
                 <div class="feature-title">
                     Complaint Draft
                 </div>
+
                 <div class="feature-text">
-                    Convert incident details into a
-                    structured complaint draft.
+                    Turn cyber incident details
+                    into a structured complaint draft.
                 </div>
+
             </div>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
 
     st.markdown("### 💬 Ask CyberLaw Pakistan AI")
 
-    # Chat history
+    # =====================================================
+    # CHAT HISTORY
+    # =====================================================
 
     for message in st.session_state.messages:
 
         if message["role"] == "user":
 
+            safe_content = message["content"]
+
             st.markdown(
                 f"""
                 <div class="user-message">
-                    <strong>You</strong><br>
-                    {message["content"]}
+                    <strong>You</strong><br><br>
+                    {safe_content}
                 </div>
                 """,
-                unsafe_allow_html=True,
+                unsafe_allow_html=True
             )
 
         else:
@@ -1206,11 +1361,12 @@ if st.session_state.page == "AI Assistant":
             st.markdown(
                 f"""
                 <div class="assistant-message">
-                    <strong>⚖️ CyberLaw AI</strong><br><br>
+                    <strong>⚖️ CyberLaw AI</strong>
+                    <br><br>
                     {message["content"]}
                 </div>
                 """,
-                unsafe_allow_html=True,
+                unsafe_allow_html=True
             )
 
             if (
@@ -1224,31 +1380,35 @@ if st.session_state.page == "AI Assistant":
 
                     for i, source in enumerate(
                         message["sources"],
-                        start=1,
+                        start=1
                     ):
 
                         st.markdown(
                             f"""
                             <div class="source-card">
 
-                            <div class="source-title">
-                            Source {i}
-                            </div>
+                                <div class="source-title">
+                                    Source {i}
+                                </div>
 
-                            <div class="source-page">
-                            Page {source["page"]}
-                            · Similarity:
-                            {source["score"]:.3f}
-                            </div>
+                                <div class="source-page">
+                                    Page {source["page"]}
+                                    · Similarity:
+                                    {source["score"]:.3f}
+                                </div>
 
-                            <br>
-
-                            {source["text"]}
+                                <div class="source-text">
+                                    {source["text"]}
+                                </div>
 
                             </div>
                             """,
-                            unsafe_allow_html=True,
+                            unsafe_allow_html=True
                         )
+
+    # =====================================================
+    # CHAT INPUT
+    # =====================================================
 
     question = st.chat_input(
         "Ask a question about Pakistani cyber law..."
@@ -1259,12 +1419,12 @@ if st.session_state.page == "AI Assistant":
         st.session_state.messages.append(
             {
                 "role": "user",
-                "content": question,
+                "content": question
             }
         )
 
         with st.spinner(
-            "🔎 Searching legal sources and generating answer..."
+            "🔎 Searching legal sources..."
         ):
 
             try:
@@ -1273,7 +1433,7 @@ if st.session_state.page == "AI Assistant":
                     question,
                     index,
                     chunks,
-                    top_k,
+                    top_k
                 )
 
                 context = create_context(
@@ -1287,25 +1447,25 @@ if st.session_state.page == "AI Assistant":
                     response_size,
                     language,
                     answer_style,
-                    model_name,
+                    model_name
                 )
 
                 st.session_state.messages.append(
                     {
                         "role": "assistant",
                         "content": answer,
-                        "sources": results,
+                        "sources": results
                     }
                 )
 
-            except Exception as e:
+            except Exception as error:
 
                 st.session_state.messages.append(
                     {
                         "role": "assistant",
                         "content":
-                            f"⚠️ Unable to process the request: {e}",
-                        "sources": [],
+                            f"⚠️ Error: {error}",
+                        "sources": []
                     }
                 )
 
@@ -1328,20 +1488,20 @@ elif st.session_state.page == "File a Complaint":
 
             <div class="complaint-subtitle">
                 Describe your cyber incident and generate
-                a structured AI-assisted complaint draft.
-                The draft should be reviewed and verified
-                before official submission.
+                an AI-assisted structured complaint draft.
+                Verify the information before official
+                submission.
             </div>
 
-            <br>
-
-            <span class="badge">AI Draft</span>
-            <span class="badge">Evidence Based</span>
-            <span class="badge">Pakistan</span>
+            <div class="badge-container">
+                <span class="badge">AI Draft</span>
+                <span class="badge">Evidence Based</span>
+                <span class="badge">Pakistan</span>
+            </div>
 
         </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
     st.markdown("### Incident Information")
@@ -1361,30 +1521,34 @@ elif st.session_state.page == "File a Complaint":
                 "Online fraud",
                 "Threat / blackmail",
                 "Unauthorized account access",
-                "Data/privacy issue",
-                "Other",
-            ],
+                "Data / privacy issue",
+                "Other"
+            ]
         )
 
         platform = st.text_input(
             "Platform / website",
-            placeholder="e.g. Facebook, WhatsApp, Instagram"
+            placeholder=(
+                "e.g. Facebook, WhatsApp, Instagram"
+            )
         )
 
         incident_date = st.text_input(
             "Date of incident",
-            placeholder="e.g. 10 September 2026"
+            placeholder=(
+                "e.g. 10 September 2026"
+            )
         )
 
     with col2:
 
         suspect_known = st.selectbox(
-            "Do you know the person involved?",
+            "Is the person involved known?",
             [
                 "No",
                 "Yes",
-                "Partially",
-            ],
+                "Partially"
+            ]
         )
 
         evidence = st.text_area(
@@ -1393,33 +1557,31 @@ elif st.session_state.page == "File a Complaint":
                 "Screenshots, URLs, messages, "
                 "emails, transaction records, etc."
             ),
-            height=120,
+            height=120
         )
 
     incident_description = st.text_area(
         "Describe what happened",
         placeholder=(
             "Explain the incident in your own words. "
-            "Include what happened, who was involved, "
-            "where it happened and how it affected you."
+            "Include what happened, where it happened, "
+            "who was involved, and relevant details."
         ),
-        height=220,
+        height=220
     )
-
-    st.markdown("### Optional Information")
 
     additional_info = st.text_area(
         "Additional information",
         placeholder=(
-            "Any other relevant facts..."
+            "Add any other relevant facts..."
         ),
-        height=120,
+        height=120
     )
 
     generate_complaint = st.button(
         "⚖️ Generate Complaint Draft",
         type="primary",
-        use_container_width=True,
+        use_container_width=True
     )
 
     if generate_complaint:
@@ -1434,7 +1596,7 @@ elif st.session_state.page == "File a Complaint":
 
             complaint_question = f"""
 Create a structured AI-generated cybercrime
-complaint draft based on the following incident.
+complaint draft.
 
 Incident type:
 {incident_type}
@@ -1445,7 +1607,7 @@ Platform:
 Date:
 {incident_date}
 
-Suspect information:
+Known suspect:
 {suspect_known}
 
 Evidence:
@@ -1459,11 +1621,12 @@ Additional information:
 
 Requirements:
 
-1. Clearly label this as:
+1. Start with:
+
 AI-generated complaint draft — verify before submission.
 
 2. Identify potentially relevant Pakistani cyber-law
-provisions ONLY if supported by the retrieved evidence.
+provisions ONLY when supported by the retrieved evidence.
 
 3. Do not invent section numbers.
 
@@ -1471,23 +1634,26 @@ provisions ONLY if supported by the retrieved evidence.
 
 5. Do not invent facts.
 
-6. Structure the complaint professionally.
+6. Create a professional complaint structure.
 
 7. Include:
+
 - Subject
 - Complainant statement
 - Incident details
+- Platform
+- Date
 - Evidence
-- Relevant legal provision, if supported
+- Relevant legal provision
 - Requested action
 - Declaration
 
-8. Explain which information the complainant still
-needs to fill in.
+8. Identify information that still needs to be
+filled in by the complainant.
 """
 
             with st.spinner(
-                "Preparing complaint draft..."
+                "⚖️ Preparing complaint draft..."
             ):
 
                 try:
@@ -1496,7 +1662,7 @@ needs to fill in.
                         complaint_question,
                         index,
                         chunks,
-                        top_k,
+                        top_k
                     )
 
                     context = create_context(
@@ -1508,9 +1674,9 @@ needs to fill in.
                         context,
                         "Legal / Professional",
                         "Detailed",
-                        "English",
+                        language,
                         "Legal analysis",
-                        model_name,
+                        model_name
                     )
 
                     st.success(
@@ -1518,8 +1684,8 @@ needs to fill in.
                     )
 
                     st.markdown(
-                        '<div class="card">',
-                        unsafe_allow_html=True,
+                        '<div class="custom-card">',
+                        unsafe_allow_html=True
                     )
 
                     st.markdown(
@@ -1528,7 +1694,7 @@ needs to fill in.
 
                     st.markdown(
                         "</div>",
-                        unsafe_allow_html=True,
+                        unsafe_allow_html=True
                     )
 
                     with st.expander(
@@ -1537,7 +1703,7 @@ needs to fill in.
 
                         for i, source in enumerate(
                             results,
-                            start=1,
+                            start=1
                         ):
 
                             st.markdown(
@@ -1548,25 +1714,27 @@ needs to fill in.
                                 """
                             )
 
-                except Exception as e:
+                except Exception as error:
 
                     st.error(
-                        f"Unable to generate complaint: {e}"
+                        f"Unable to generate complaint: {error}"
                     )
 
     st.info(
         """
-        **Important:** This feature creates an AI-assisted
-        draft. It is not an official legal complaint or
-        legal opinion. Verify the facts, legal provisions,
-        and submission procedure with the relevant authority
-        or a qualified Pakistani lawyer.
+        **Important:** This tool generates an
+        AI-assisted draft. It is not an official
+        legal complaint or legal opinion.
+
+        Verify the facts, applicable legal provisions,
+        and official submission procedure before
+        submitting a complaint.
         """
     )
 
 
 # =========================================================
-# ABOUT PAGE
+# ABOUT
 # =========================================================
 
 elif st.session_state.page == "About":
@@ -1576,83 +1744,90 @@ elif st.session_state.page == "About":
         <div class="hero">
 
             <div class="hero-title">
-                ⚖️ About <span>CyberLaw Pakistan AI</span>
+                ⚖️ About
+                <span>CyberLaw Pakistan AI</span>
             </div>
 
             <div class="hero-subtitle">
-                An AI-powered retrieval-augmented generation
+                An AI-powered Retrieval-Augmented Generation
                 application for understanding Pakistani
                 cyber-law information.
             </div>
 
         </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
     st.markdown("### How it works")
 
-    col1, col2, col3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
 
-    with col1:
+    with c1:
 
         st.markdown(
             """
-            <div class="card">
+            <div class="custom-card">
 
-            ### 01 · Document
+                <h3>01 · Document</h3>
 
-            The application downloads the configured
-            Pakistan cyber-law PDF.
+                <p>
+                    The application downloads the configured
+                    Pakistan cyber-law PDF.
+                </p>
 
             </div>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
 
-    with col2:
+    with c2:
 
         st.markdown(
             """
-            <div class="card">
+            <div class="custom-card">
 
-            ### 02 · Retrieval
+                <h3>02 · Retrieval</h3>
 
-            The PDF is split into chunks and converted
-            into vector embeddings for semantic search.
+                <p>
+                    The PDF is split into chunks and
+                    converted into vector embeddings.
+                </p>
 
             </div>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
 
-    with col3:
+    with c3:
 
         st.markdown(
             """
-            <div class="card">
+            <div class="custom-card">
 
-            ### 03 · Generation
+                <h3>03 · Generation</h3>
 
-            Relevant legal passages are provided to
-            Groq before generating the response.
+                <p>
+                    Relevant legal passages are provided
+                    to Groq before generating an answer.
+                </p>
 
             </div>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
 
     st.markdown("### Technology")
 
     st.markdown(
         """
-        - **Streamlit** — User interface
-        - **Python** — Application backend
-        - **FAISS** — Vector similarity search
-        - **Sentence Transformers** — Embeddings
-        - **Groq** — LLM generation
-        - **PyPDF** — PDF extraction
-        - **RAG** — Retrieval-Augmented Generation
+        - **Python**
+        - **Streamlit**
+        - **FAISS**
+        - **Sentence Transformers**
+        - **Groq**
+        - **PyPDF**
+        - **Retrieval-Augmented Generation**
         """
     )
 
@@ -1682,12 +1857,16 @@ st.markdown(
     <div class="footer">
 
         ⚖️ CyberLaw Pakistan AI
+
         <br>
+
         AI-powered legal information assistant
+
         <br><br>
-        Built with Python · Streamlit · FAISS · Groq
+
+        Python · Streamlit · FAISS · Groq
 
     </div>
     """,
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
