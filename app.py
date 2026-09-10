@@ -1,5 +1,6 @@
 import os
 import re
+import html
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -13,7 +14,7 @@ from groq import Groq
 
 
 # ============================================================
-# PAGE CONFIG
+# CONFIGURATION
 # ============================================================
 
 st.set_page_config(
@@ -23,272 +24,87 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
-# ============================================================
-# CONFIG
-# ============================================================
-
 APP_NAME = "CyberLaw Pakistan AI"
 
+# Your Google Drive PDF
 GOOGLE_DRIVE_URL = (
     "https://drive.google.com/file/d/"
     "1d7xD2E1HrZBpkv16yHcqTb75C0MOzdmx/view?usp=sharing"
 )
 
 DATA_DIR = ".cyberlaw_data"
+PDF_FILE = os.path.join(DATA_DIR, "pakistan_cyber_law.pdf")
+INDEX_FILE = os.path.join(DATA_DIR, "cyberlaw.index")
+CHUNKS_FILE = os.path.join(DATA_DIR, "chunks.npy")
+METADATA_FILE = os.path.join(DATA_DIR, "metadata.npy")
 
-PDF_FILE = os.path.join(
-    DATA_DIR,
-    "pakistan_cyber_law.pdf"
-)
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 
-INDEX_FILE = os.path.join(
-    DATA_DIR,
-    "cyberlaw.index"
-)
-
-CHUNKS_FILE = os.path.join(
-    DATA_DIR,
-    "chunks.npy"
-)
-
-METADATA_FILE = os.path.join(
-    DATA_DIR,
-    "metadata.npy"
-)
-
-EMBEDDING_MODEL = (
-    "sentence-transformers/all-MiniLM-L6-v2"
-)
-
-DEFAULT_GROQ_MODEL = (
-    "openai/gpt-oss-120b"
-)
-
-os.makedirs(
-    DATA_DIR,
-    exist_ok=True
-)
+os.makedirs(DATA_DIR, exist_ok=True)
 
 
 # ============================================================
-# SESSION STATE
+# STYLING
 # ============================================================
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "prompt_count" not in st.session_state:
-    st.session_state.prompt_count = 0
-
-if "total_tokens" not in st.session_state:
-    st.session_state.total_tokens = 0
-
-if "theme" not in st.session_state:
-    st.session_state.theme = "Dark"
-
-if "accent_color" not in st.session_state:
-    st.session_state.accent_color = "#FF7A00"
-
-if "background_color" not in st.session_state:
-    st.session_state.background_color = "#0E1117"
-
-
-# ============================================================
-# SECRET / API KEY
-# ============================================================
-
-def get_groq_api_key():
+st.markdown(
     """
-    API key is NEVER displayed in the UI.
+    <style>
+    .main-title {
+        font-size: 42px;
+        font-weight: 800;
+        margin-bottom: 5px;
+    }
 
-    Priority:
-    1. Streamlit secrets
-    2. Environment variable
-    """
+    .subtitle {
+        font-size: 17px;
+        opacity: 0.75;
+        margin-bottom: 25px;
+    }
 
-    try:
-        if "GROQ_API_KEY" in st.secrets:
-            return st.secrets["GROQ_API_KEY"]
-    except Exception:
-        pass
+    .info-box {
+        padding: 18px;
+        border-radius: 12px;
+        border: 1px solid rgba(128,128,128,0.25);
+        margin-bottom: 15px;
+    }
 
-    return os.getenv("GROQ_API_KEY")
+    .source-box {
+        padding: 12px;
+        border-radius: 10px;
+        border-left: 4px solid #888;
+        margin-top: 8px;
+        font-size: 14px;
+    }
 
+    .warning-box {
+        padding: 15px;
+        border-radius: 10px;
+        background: rgba(255, 193, 7, 0.10);
+        border: 1px solid rgba(255, 193, 7, 0.35);
+    }
 
-GROQ_API_KEY = get_groq_api_key()
-
-
-# ============================================================
-# THEME
-# ============================================================
-
-def apply_theme():
-    theme = st.session_state.theme
-    accent = st.session_state.accent_color
-    background = st.session_state.background_color
-
-    if theme == "Light":
-        text_color = "#111111"
-        secondary_text = "#555555"
-        card_background = "#FFFFFF"
-        border_color = "#DDDDDD"
-        input_background = "#F7F7F7"
-    else:
-        text_color = "#F5F5F5"
-        secondary_text = "#AAAAAA"
-        card_background = "#161B22"
-        border_color = "#30363D"
-        input_background = "#0D1117"
-
-    st.markdown(
-        f"""
-        <style>
-
-        /* =========================
-           MAIN APPLICATION
-        ========================= */
-
-        .stApp {{
-            background: {background};
-            color: {text_color};
-        }}
-
-        .main {{
-            background: {background};
-        }}
-
-        /* =========================
-           TEXT
-        ========================= */
-
-        h1, h2, h3, h4, h5, h6 {{
-            color: {text_color} !important;
-        }}
-
-        p, li, label {{
-            color: {text_color};
-        }}
-
-        /* =========================
-           TITLE
-        ========================= */
-
-        .main-title {{
-            font-size: 42px;
-            font-weight: 800;
-            color: {accent};
-            margin-bottom: 5px;
-        }}
-
-        .subtitle {{
-            font-size: 17px;
-            color: {secondary_text};
-            margin-bottom: 25px;
-        }}
-
-        /* =========================
-           CARDS
-        ========================= */
-
-        .custom-card {{
-            background: {card_background};
-            border: 1px solid {border_color};
-            border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 15px;
-        }}
-
-        /* =========================
-           METRICS
-        ========================= */
-
-        .metric-card {{
-            background: {card_background};
-            border: 1px solid {border_color};
-            border-radius: 14px;
-            padding: 15px;
-            text-align: center;
-        }}
-
-        .metric-number {{
-            font-size: 28px;
-            font-weight: 800;
-            color: {accent};
-        }}
-
-        .metric-label {{
-            color: {secondary_text};
-            font-size: 13px;
-        }}
-
-        /* =========================
-           SOURCE
-        ========================= */
-
-        .source-box {{
-            background: {card_background};
-            border-left: 4px solid {accent};
-            border-radius: 10px;
-            padding: 14px;
-            margin-top: 8px;
-        }}
-
-        /* =========================
-           BUTTONS
-        ========================= */
-
-        .stButton > button {{
-            border-radius: 10px;
-            border: 1px solid {accent};
-        }}
-
-        /* =========================
-           INPUTS
-        ========================= */
-
-        textarea,
-        input {{
-            background-color: {input_background} !important;
-            color: {text_color} !important;
-        }}
-
-        /* =========================
-           SIDEBAR
-        ========================= */
-
-        section[data-testid="stSidebar"] {{
-            background: {card_background};
-        }}
-
-        section[data-testid="stSidebar"] h1,
-        section[data-testid="stSidebar"] h2,
-        section[data-testid="stSidebar"] h3 {{
-            color: {accent} !important;
-        }}
-
-        /* =========================
-           CHAT
-        ========================= */
-
-        [data-testid="stChatMessage"] {{
-            border-radius: 12px;
-        }}
-
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-apply_theme()
+    .success-box {
+        padding: 15px;
+        border-radius: 10px;
+        background: rgba(40, 167, 69, 0.10);
+        border: 1px solid rgba(40, 167, 69, 0.35);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # ============================================================
-# GOOGLE DRIVE
+# GOOGLE DRIVE FUNCTIONS
 # ============================================================
 
 def extract_google_drive_file_id(url):
+    """
+    Extract a Google Drive file ID from common Drive URL formats.
+    """
 
     if not url:
         return None
@@ -300,26 +116,18 @@ def extract_google_drive_file_id(url):
     ]
 
     for pattern in patterns:
-
-        match = re.search(
-            pattern,
-            url
-        )
-
+        match = re.search(pattern, url)
         if match:
             return match.group(1)
 
-    if re.fullmatch(
-        r"[a-zA-Z0-9_-]{20,}",
-        url.strip()
-    ):
+    # If user directly provides the ID
+    if re.fullmatch(r"[a-zA-Z0-9_-]{20,}", url.strip()):
         return url.strip()
 
     return None
 
 
-def build_drive_download_url(file_id):
-
+def build_google_drive_download_url(file_id):
     return (
         "https://drive.google.com/uc?"
         + urllib.parse.urlencode(
@@ -331,92 +139,65 @@ def build_drive_download_url(file_id):
     )
 
 
-def download_google_drive_pdf(
-    url,
-    destination
-):
+def download_google_drive_pdf(url, destination):
+    """
+    Download a publicly shared Google Drive PDF.
+
+    Handles:
+    - /file/d/.../view URLs
+    - uc?export=download URLs
+    - Google Drive confirmation pages
+    """
 
     file_id = extract_google_drive_file_id(url)
 
     if not file_id:
         raise ValueError(
-            "Invalid Google Drive URL."
+            "Could not extract the Google Drive file ID from the provided URL."
         )
 
-    download_url = (
-        build_drive_download_url(
-            file_id
-        )
-    )
+    download_url = build_google_drive_download_url(file_id)
 
     opener = urllib.request.build_opener()
-
     opener.addheaders = [
         (
             "User-Agent",
-            "Mozilla/5.0 "
-            "(Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 "
-            "(KHTML, like Gecko) "
-            "Chrome/131 Safari/537.36"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 Chrome/131 Safari/537.36",
         )
     ]
 
     try:
-
-        response = opener.open(
-            download_url,
-            timeout=60
-        )
-
+        response = opener.open(download_url, timeout=60)
         content = response.read()
 
-        content_type = (
-            response.headers
-            .get(
-                "Content-Type",
-                ""
-            )
-            .lower()
-        )
+        content_type = response.headers.get("Content-Type", "").lower()
 
-        if (
-            content.startswith(b"%PDF-")
-            or "application/pdf"
-            in content_type
-        ):
-
-            with open(
-                destination,
-                "wb"
-            ) as file:
-
+        # A real PDF normally starts with %PDF-
+        if content.startswith(b"%PDF-") or "application/pdf" in content_type:
+            with open(destination, "wb") as file:
                 file.write(content)
 
             return destination
 
-        text = content.decode(
-            "utf-8",
-            errors="ignore"
-        )
+        # Google Drive may return an HTML confirmation page.
+        text = content.decode("utf-8", errors="ignore")
 
         token_match = re.search(
             r'name="confirm"\s+value="([^"]+)"',
             text,
-            re.IGNORECASE
+            re.IGNORECASE,
         )
 
         if not token_match:
-
             token_match = re.search(
                 r"confirm=([0-9A-Za-z_-]+)",
                 text,
-                re.IGNORECASE
+                re.IGNORECASE,
             )
 
         if token_match:
-
-            token = token_match.group(1)
+            confirm_token = token_match.group(1)
 
             confirm_url = (
                 "https://drive.usercontent.google.com/download?"
@@ -424,89 +205,84 @@ def download_google_drive_pdf(
                     {
                         "id": file_id,
                         "export": "download",
-                        "confirm": token,
+                        "confirm": confirm_token,
                     }
                 )
             )
 
-            response = opener.open(
-                confirm_url,
-                timeout=120
-            )
-
+            response = opener.open(confirm_url, timeout=120)
             pdf_content = response.read()
 
-            if not pdf_content.startswith(
-                b"%PDF-"
-            ):
+            if not pdf_content.startswith(b"%PDF-"):
                 raise ValueError(
-                    "Google Drive did not return a valid PDF."
+                    "Google Drive returned a response that is not a PDF. "
+                    "Make sure the file is publicly accessible."
                 )
 
-            with open(
-                destination,
-                "wb"
-            ) as file:
+            with open(destination, "wb") as file:
+                file.write(pdf_content)
 
+            return destination
+
+        # Another possible Google Drive download form
+        confirm_url = (
+            "https://drive.usercontent.google.com/download?"
+            + urllib.parse.urlencode(
+                {
+                    "id": file_id,
+                    "export": "download",
+                }
+            )
+        )
+
+        response = opener.open(confirm_url, timeout=120)
+        pdf_content = response.read()
+
+        if pdf_content.startswith(b"%PDF-"):
+            with open(destination, "wb") as file:
                 file.write(pdf_content)
 
             return destination
 
         raise ValueError(
-            "Google Drive returned a non-PDF response. "
-            "Make sure the file is shared as "
+            "Google Drive did not return a PDF. "
+            "Check that the Drive file is shared as "
             "'Anyone with the link'."
         )
 
     except urllib.error.HTTPError as error:
-
         raise RuntimeError(
-            f"Google Drive HTTP error: {error.code}"
+            f"Google Drive download failed with HTTP {error.code}."
         ) from error
 
     except urllib.error.URLError as error:
-
         raise RuntimeError(
-            f"Google Drive connection error: {error.reason}"
+            f"Could not connect to Google Drive: {error.reason}"
         ) from error
 
 
 # ============================================================
-# PDF EXTRACTION
+# PDF PROCESSING
 # ============================================================
 
 def extract_pdf_pages(pdf_path):
+    """
+    Extract text page-by-page from the PDF.
+    """
 
-    reader = PdfReader(
-        pdf_path
-    )
+    reader = PdfReader(pdf_path)
 
     pages = []
 
-    for page_number, page in enumerate(
-        reader.pages,
-        start=1
-    ):
-
+    for page_number, page in enumerate(reader.pages, start=1):
         try:
-
-            text = (
-                page.extract_text()
-                or ""
-            )
-
+            text = page.extract_text() or ""
         except Exception:
-
             text = ""
 
-        text = re.sub(
-            r"\s+",
-            " ",
-            text
-        ).strip()
+        text = re.sub(r"\s+", " ", text).strip()
 
         if text:
-
             pages.append(
                 {
                     "page": page_number,
@@ -517,51 +293,42 @@ def extract_pdf_pages(pdf_path):
     return pages
 
 
-# ============================================================
-# CHUNKING
-# ============================================================
-
 def create_chunks(
     pages,
     chunk_size=1000,
-    overlap=150
+    overlap=150,
 ):
+    """
+    Split PDF text into overlapping chunks.
+
+    Each chunk keeps its original PDF page number.
+    """
 
     if overlap >= chunk_size:
-        raise ValueError(
-            "Overlap must be smaller than chunk size."
-        )
+        raise ValueError("Chunk overlap must be smaller than chunk size.")
 
     chunks = []
     metadata = []
 
     for page_data in pages:
-
         page_number = page_data["page"]
         text = page_data["text"]
+
+        if not text:
+            continue
 
         start = 0
 
         while start < len(text):
+            end = min(start + chunk_size, len(text))
 
-            end = min(
-                start + chunk_size,
-                len(text)
-            )
-
-            chunk = text[
-                start:end
-            ].strip()
+            chunk = text[start:end].strip()
 
             if chunk:
-
-                chunks.append(
-                    chunk
-                )
-
+                chunks.append(chunk)
                 metadata.append(
                     {
-                        "page": page_number
+                        "page": page_number,
                     }
                 )
 
@@ -577,168 +344,120 @@ def create_chunks(
 # EMBEDDING MODEL
 # ============================================================
 
-@st.cache_resource(
-    show_spinner=False
-)
+@st.cache_resource(show_spinner=False)
 def load_embedding_model():
-
-    return SentenceTransformer(
-        EMBEDDING_MODEL
-    )
+    return SentenceTransformer(EMBEDDING_MODEL)
 
 
 # ============================================================
-# DATABASE
+# BUILD / LOAD VECTOR DATABASE
 # ============================================================
 
 def database_exists():
-
-    return all(
-        os.path.exists(path)
-        for path in [
-            PDF_FILE,
-            INDEX_FILE,
-            CHUNKS_FILE,
-            METADATA_FILE,
-        ]
+    return (
+        os.path.exists(PDF_FILE)
+        and os.path.exists(INDEX_FILE)
+        and os.path.exists(CHUNKS_FILE)
+        and os.path.exists(METADATA_FILE)
     )
 
 
-def save_database(
-    chunks,
-    metadata,
-    embeddings
-):
+def save_database(chunks, metadata, embeddings):
+    """
+    Save FAISS index, chunks and metadata.
+    """
 
-    faiss.normalize_L2(
-        embeddings
-    )
+    dimension = embeddings.shape[1]
 
-    dimension = (
-        embeddings.shape[1]
-    )
+    index = faiss.IndexFlatIP(dimension)
 
-    index = faiss.IndexFlatIP(
-        dimension
-    )
+    # Normalize embeddings for cosine similarity
+    faiss.normalize_L2(embeddings)
 
-    index.add(
-        embeddings.astype(
-            "float32"
-        )
-    )
+    index.add(embeddings.astype("float32"))
 
-    faiss.write_index(
-        index,
-        INDEX_FILE
-    )
+    faiss.write_index(index, INDEX_FILE)
 
     np.save(
         CHUNKS_FILE,
-        np.array(
-            chunks,
-            dtype=object
-        ),
-        allow_pickle=True
+        np.array(chunks, dtype=object),
+        allow_pickle=True,
     )
 
     np.save(
         METADATA_FILE,
-        np.array(
-            metadata,
-            dtype=object
-        ),
-        allow_pickle=True
+        np.array(metadata, dtype=object),
+        allow_pickle=True,
     )
 
 
 def load_database():
-
-    index = faiss.read_index(
-        INDEX_FILE
-    )
+    index = faiss.read_index(INDEX_FILE)
 
     chunks = np.load(
         CHUNKS_FILE,
-        allow_pickle=True
+        allow_pickle=True,
     ).tolist()
 
     metadata = np.load(
         METADATA_FILE,
-        allow_pickle=True
+        allow_pickle=True,
     ).tolist()
 
-    return (
-        index,
-        chunks,
-        metadata
-    )
+    return index, chunks, metadata
 
 
-def build_database(
-    force_rebuild=False
-):
+def build_database(force_rebuild=False):
+    """
+    Download PDF if necessary and create/load vector database.
+    """
 
-    if (
-        database_exists()
-        and not force_rebuild
-    ):
-
+    if database_exists() and not force_rebuild:
         try:
-
             return load_database()
-
         except Exception:
-
             pass
 
     with st.status(
-        "Preparing knowledge base...",
-        expanded=True
+        "Preparing the CyberLaw knowledge base...",
+        expanded=True,
     ) as status:
 
-        st.write(
-            "Downloading legal PDF..."
-        )
+        st.write("Downloading the legal source PDF...")
 
         download_google_drive_pdf(
             GOOGLE_DRIVE_URL,
-            PDF_FILE
+            PDF_FILE,
         )
 
-        st.write(
-            "Extracting PDF text..."
-        )
+        st.write("Extracting PDF text...")
 
-        pages = extract_pdf_pages(
-            PDF_FILE
-        )
+        pages = extract_pdf_pages(PDF_FILE)
 
         if not pages:
-
             raise ValueError(
-                "No readable text was found in the PDF."
+                "No readable text was extracted from the PDF. "
+                "The PDF may be scanned/image-only."
             )
 
         st.write(
-            f"Extracted {len(pages)} pages."
+            f"Extracted text from {len(pages)} pages."
         )
+
+        st.write("Creating text chunks...")
+
+        chunks, metadata = create_chunks(pages)
+
+        if not chunks:
+            raise ValueError(
+                "No text chunks were created from the PDF."
+            )
 
         st.write(
-            "Creating chunks..."
+            f"Created {len(chunks)} searchable chunks."
         )
 
-        chunks, metadata = create_chunks(
-            pages
-        )
-
-        st.write(
-            f"Created {len(chunks)} chunks."
-        )
-
-        st.write(
-            "Creating embeddings..."
-        )
+        st.write("Creating embeddings...")
 
         model = load_embedding_model()
 
@@ -746,27 +465,23 @@ def build_database(
             chunks,
             batch_size=32,
             show_progress_bar=False,
-            convert_to_numpy=True
+            convert_to_numpy=True,
         )
 
-        embeddings = embeddings.astype(
-            "float32"
-        )
+        embeddings = embeddings.astype("float32")
 
-        st.write(
-            "Building FAISS index..."
-        )
+        st.write("Building FAISS vector index...")
 
         save_database(
             chunks,
             metadata,
-            embeddings
+            embeddings,
         )
 
         status.update(
             label="Knowledge base ready.",
             state="complete",
-            expanded=False
+            expanded=False,
         )
 
     return load_database()
@@ -781,41 +496,31 @@ def retrieve_documents(
     index,
     chunks,
     metadata,
-    top_k=5
+    top_k=5,
 ):
+    """
+    Retrieve the most relevant legal document chunks.
+    """
 
     model = load_embedding_model()
 
     query_embedding = model.encode(
         [question],
-        convert_to_numpy=True
-    ).astype(
-        "float32"
-    )
+        convert_to_numpy=True,
+    ).astype("float32")
 
-    faiss.normalize_L2(
-        query_embedding
-    )
+    faiss.normalize_L2(query_embedding)
 
     scores, indices = index.search(
         query_embedding,
-        min(
-            top_k,
-            len(chunks)
-        )
+        min(top_k, len(chunks)),
     )
 
     results = []
 
-    for score, idx in zip(
-        scores[0],
-        indices[0]
-    ):
+    for score, idx in zip(scores[0], indices[0]):
 
-        if (
-            idx < 0
-            or idx >= len(chunks)
-        ):
+        if idx < 0 or idx >= len(chunks):
             continue
 
         results.append(
@@ -829,200 +534,192 @@ def retrieve_documents(
     return results
 
 
-def create_context(results):
-
-    if not results:
-
-        return (
-            "No relevant legal evidence was retrieved."
-        )
-
-    parts = []
-
-    for i, result in enumerate(
-        results,
-        start=1
-    ):
-
-        parts.append(
-            f"""
-SOURCE {i}
-PAGE: {result["page"]}
-SIMILARITY: {result["score"]:.4f}
-
-{result["text"]}
-"""
-        )
-
-    return "\n".join(parts)
-
-
 # ============================================================
 # GROQ
 # ============================================================
 
-def get_groq_client():
-
-    if not GROQ_API_KEY:
+def get_groq_client(api_key):
+    if not api_key:
         return None
 
-    return Groq(
-        api_key=GROQ_API_KEY
-    )
+    return Groq(api_key=api_key)
 
 
-def get_max_tokens(
-    response_size
-):
-
-    values = {
+def get_max_tokens(response_size):
+    mapping = {
         "Short": 700,
         "Medium": 1200,
         "Detailed": 2000,
         "Very detailed": 3000,
     }
 
-    return values.get(
-        response_size,
-        1200
-    )
+    return mapping.get(response_size, 1200)
 
 
 def build_system_prompt(
     technical_level,
     response_size,
     language,
-    answer_style
+    answer_style,
 ):
-
     return f"""
-You are CyberLaw Pakistan AI.
+You are CyberLaw Pakistan AI, a retrieval-augmented legal information assistant.
 
-You are a retrieval-augmented legal information assistant.
+Your task is to answer questions using ONLY the legal source material retrieved
+from the configured Pakistani cyber-law PDF.
 
-Use ONLY the retrieved legal evidence supplied in the user prompt
-for specific legal claims.
+IMPORTANT LEGAL ACCURACY RULES:
 
-LEGAL ACCURACY RULES:
+1. Do not invent laws, sections, clauses, penalties, fines, procedures,
+   authorities, dates or legal requirements.
 
-1. Never invent laws.
-2. Never invent sections.
-3. Never invent penalties.
-4. Never invent fines.
-5. Never invent legal procedures.
-6. Never fabricate citations.
-7. If evidence is insufficient, clearly say so.
-8. Do not pretend to be a lawyer.
-9. Important legal matters should be verified with a qualified
-   Pakistani lawyer or relevant official authority.
-10. Do not provide operational instructions for hacking, malware,
-    phishing, credential theft, unauthorized access, cyber attacks,
-    fraud or other harmful cyber activity.
-11. You may provide safe cybersecurity and legal information.
+2. Do not claim that a specific section exists unless the retrieved source
+   supports it.
 
-CITATIONS:
+3. If the retrieved evidence is insufficient, clearly say that the provided
+   source does not contain enough information to answer confidently.
 
-Use:
-[Source 1, Page X]
-[Source 2, Page Y]
+4. Never fabricate citations.
 
-Only cite sources that actually support the statement.
+5. Cite supporting evidence using:
+   [Source 1, Page X]
+   [Source 2, Page Y]
 
-USER SETTINGS:
+6. If multiple sources support an answer, cite the relevant sources.
+
+7. Distinguish between:
+   - what the provided legal document says
+   - general explanation
+   - practical guidance
+
+8. Do not present yourself as a lawyer.
+
+9. For urgent legal matters, serious criminal allegations, arrests,
+   investigations or court proceedings, recommend consulting a qualified
+   Pakistani lawyer or relevant authority.
+
+10. Do not provide instructions that facilitate:
+    - hacking
+    - malware
+    - credential theft
+    - phishing
+    - unauthorized access
+    - evasion of law enforcement
+    - cyber attacks
+    - identity theft
+    - fraud
+    - abuse of computer systems
+
+11. If the user asks for harmful cyber instructions, refuse the harmful
+    operational part but provide a safe legal/security explanation when
+    appropriate.
+
+USER PREFERENCES:
 
 Technical level: {technical_level}
 Response size: {response_size}
 Language: {language}
 Answer style: {answer_style}
 
-Respond entirely in the selected language.
+Answer entirely in the selected language.
 
-Be precise, clear and structured.
+Be precise, structured and easy to understand.
 """
 
 
-def build_history():
+def create_context(results):
+    if not results:
+        return "No relevant legal evidence was retrieved."
 
-    if not st.session_state.messages:
-        return "No previous conversation."
+    context_parts = []
 
-    history = []
+    for i, result in enumerate(results, start=1):
+        context_parts.append(
+            f"""
+SOURCE {i}
+PDF Page: {result["page"]}
+Similarity Score: {result["score"]:.4f}
 
-    for message in st.session_state.messages[-6:]:
-
-        role = message.get(
-            "role",
-            ""
+TEXT:
+{result["text"]}
+"""
         )
 
-        content = message.get(
-            "content",
-            ""
-        )
+    return "\n".join(context_parts)
 
-        if role in [
-            "user",
-            "assistant"
-        ]:
 
-            history.append(
+def build_conversation_history(messages):
+    """
+    Include a small amount of previous conversation so follow-up questions
+    can work more naturally.
+    """
+
+    if not messages:
+        return ""
+
+    history = messages[-6:]
+
+    lines = []
+
+    for message in history:
+        role = message.get("role", "")
+        content = message.get("content", "")
+
+        if role in ("user", "assistant"):
+            lines.append(
                 f"{role.upper()}: {content}"
             )
 
-    return "\n".join(
-        history
-    )
+    return "\n".join(lines)
 
 
 def ask_groq(
     question,
     context,
     history,
+    api_key,
     model_name,
     technical_level,
     response_size,
     language,
-    answer_style
+    answer_style,
 ):
-
-    client = get_groq_client()
+    client = get_groq_client(api_key)
 
     if client is None:
-
         raise ValueError(
-            "GROQ_API_KEY is not configured. "
-            "Add it to Streamlit Secrets."
+            "GROQ_API_KEY is missing."
         )
 
     system_prompt = build_system_prompt(
-        technical_level,
-        response_size,
-        language,
-        answer_style
+        technical_level=technical_level,
+        response_size=response_size,
+        language=language,
+        answer_style=answer_style,
     )
 
     user_prompt = f"""
 RETRIEVED LEGAL EVIDENCE:
-
 {context}
 
 PREVIOUS CONVERSATION:
+{history if history else "No previous conversation."}
 
-{history}
-
-CURRENT QUESTION:
-
+CURRENT USER QUESTION:
 {question}
 
-Answer the current question using the retrieved evidence.
+INSTRUCTIONS:
 
-If the source does not provide enough information,
-say that clearly.
+Answer the current question based primarily on the retrieved legal evidence.
 
-Do not guess missing legal information.
+If the evidence does not support a specific legal claim, say so.
 
-Use citations such as:
-[Source 1, Page 5]
+Do not fill missing legal information with assumptions.
+
+Include source citations in this exact style where applicable:
+[Source 1, Page X]
+
+Give a useful answer rather than simply repeating the source.
 """
 
     response = client.chat.completions.create(
@@ -1038,34 +735,97 @@ Use citations such as:
             },
         ],
         temperature=0.1,
-        max_tokens=get_max_tokens(
-            response_size
-        ),
+        max_tokens=get_max_tokens(response_size),
     )
 
-    usage = getattr(
-        response,
-        "usage",
-        None
-    )
+    return response.choices[0].message.content
 
-    if usage:
 
-        total_tokens = getattr(
-            usage,
-            "total_tokens",
-            0
+# ============================================================
+# COMPLAINT GENERATOR
+# ============================================================
+
+def generate_complaint(
+    incident,
+    context,
+    api_key,
+    model_name,
+    language,
+):
+    client = get_groq_client(api_key)
+
+    if client is None:
+        raise ValueError(
+            "GROQ_API_KEY is missing."
         )
 
-        st.session_state.total_tokens += (
-            total_tokens or 0
-        )
+    system_prompt = f"""
+You are an assistant helping users prepare a factual cybercrime complaint
+draft for Pakistan.
 
-    return (
-        response.choices[0]
-        .message
-        .content
+Language: {language}
+
+Use the retrieved legal source only for legal references.
+
+Do not invent:
+- sections
+- laws
+- penalties
+- authorities
+- procedures
+- dates
+- evidence
+
+Do not make accusations beyond the facts supplied by the user.
+
+Clearly mark the result as a DRAFT that should be reviewed before submission.
+
+Do not provide false legal certainty.
+"""
+
+    user_prompt = f"""
+INCIDENT DETAILS:
+
+{incident}
+
+RELEVANT LEGAL SOURCE:
+
+{context}
+
+Create a professional complaint draft containing:
+
+1. Subject
+2. Complainant details placeholder
+3. Incident description
+4. Date/time placeholder if not supplied
+5. Platform/device placeholder if relevant
+6. Suspect information if supplied
+7. Evidence list
+8. Requested action
+9. Declaration
+10. Signature/date placeholders
+
+Only mention legal provisions when they are supported by the supplied
+retrieved source.
+"""
+
+    response = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": user_prompt,
+            },
+        ],
+        temperature=0.1,
+        max_tokens=2500,
     )
+
+    return response.choices[0].message.content
 
 
 # ============================================================
@@ -1074,15 +834,7 @@ Use citations such as:
 
 with st.sidebar:
 
-    st.markdown(
-        "# ⚖️ CyberLaw AI"
-    )
-
-    st.caption(
-        "Pakistan Cyber Law RAG Assistant"
-    )
-
-    st.divider()
+    st.markdown("## ⚖️ CyberLaw Pakistan AI")
 
     page = st.radio(
         "Navigation",
@@ -1090,72 +842,12 @@ with st.sidebar:
             "AI Assistant",
             "File a Complaint",
             "About",
-        ]
-    )
-
-    st.divider()
-
-    # --------------------------------------------------------
-    # THEME
-    # --------------------------------------------------------
-
-    st.markdown(
-        "### 🎨 Appearance"
-    )
-
-    theme = st.radio(
-        "Theme",
-        [
-            "Dark",
-            "Light",
         ],
-        index=(
-            0
-            if st.session_state.theme == "Dark"
-            else 1
-        ),
-        horizontal=True
     )
-
-    if theme != st.session_state.theme:
-
-        st.session_state.theme = theme
-
-        if theme == "Dark":
-
-            st.session_state.background_color = (
-                "#0E1117"
-            )
-
-        else:
-
-            st.session_state.background_color = (
-                "#F5F7FA"
-            )
-
-        st.rerun()
-
-    st.session_state.accent_color = st.color_picker(
-        "Accent color",
-        st.session_state.accent_color
-    )
-
-    st.session_state.background_color = st.color_picker(
-        "Background color",
-        st.session_state.background_color
-    )
-
-    apply_theme()
 
     st.divider()
 
-    # --------------------------------------------------------
-    # AI SETTINGS
-    # --------------------------------------------------------
-
-    st.markdown(
-        "### ⚙️ AI Settings"
-    )
+    st.markdown("### AI Settings")
 
     technical_level = st.selectbox(
         "Technical level",
@@ -1164,7 +856,8 @@ with st.sidebar:
             "Intermediate",
             "Advanced",
             "Legal/Technical",
-        ]
+        ],
+        index=0,
     )
 
     response_size = st.selectbox(
@@ -1175,16 +868,17 @@ with st.sidebar:
             "Detailed",
             "Very detailed",
         ],
-        index=1
+        index=1,
     )
 
     language = st.selectbox(
-        "Language",
+        "Response language",
         [
             "English",
             "Urdu",
             "Roman Urdu",
-        ]
+        ],
+        index=0,
     )
 
     answer_style = st.selectbox(
@@ -1194,147 +888,82 @@ with st.sidebar:
             "Step-by-step",
             "Bullet points",
             "Professional legal information",
-        ]
+        ],
+        index=0,
     )
 
     top_k = st.slider(
-        "Sources to retrieve",
+        "Retrieved sources",
         min_value=2,
         max_value=10,
-        value=5
+        value=5,
+        step=1,
     )
 
     show_sources = st.checkbox(
         "Show retrieved sources",
-        value=True
+        value=True,
     )
 
     st.divider()
 
-    # --------------------------------------------------------
-    # MODEL
-    # --------------------------------------------------------
+    st.markdown("### Groq")
 
-    st.markdown(
-        "### 🤖 Model"
+    groq_api_key = st.text_input(
+        "Groq API Key",
+        value=os.getenv("GROQ_API_KEY", ""),
+        type="password",
+        help="Your Groq API key.",
     )
 
-    groq_model = st.selectbox(
+    groq_model = st.text_input(
         "Groq model",
-        [
-            "openai/gpt-oss-120b",
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-        ],
-        index=0
+        value=DEFAULT_GROQ_MODEL,
     )
 
     st.divider()
 
-    # --------------------------------------------------------
-    # USAGE
-    # --------------------------------------------------------
-
-    st.markdown(
-        "### 📊 Usage"
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        st.metric(
-            "Prompts",
-            st.session_state.prompt_count
-        )
-
-    with col2:
-
-        st.metric(
-            "Messages",
-            len(
-                st.session_state.messages
-            )
-        )
-
-    st.metric(
-        "Tokens",
-        f"{st.session_state.total_tokens:,}"
-    )
-
-    st.divider()
-
-    st.markdown(
-        "### 📚 Knowledge Base"
-    )
+    st.markdown("### Knowledge Base")
 
     if database_exists():
-
-        st.success(
-            "Knowledge base ready"
-        )
-
+        st.success("Knowledge base available.")
     else:
-
-        st.warning(
-            "Knowledge base not ready"
-        )
+        st.warning("Knowledge base not built yet.")
 
     rebuild = st.button(
         "🔄 Rebuild knowledge base",
-        use_container_width=True
+        use_container_width=True,
     )
 
 
 # ============================================================
-# DATABASE
+# DATABASE INITIALIZATION
 # ============================================================
 
 try:
-
     if rebuild:
-
-        index, chunks, metadata = (
-            build_database(
-                force_rebuild=True
-            )
+        index, chunks, metadata = build_database(
+            force_rebuild=True
         )
-
     else:
-
-        index, chunks, metadata = (
-            build_database()
+        index, chunks, metadata = build_database(
+            force_rebuild=False
         )
 
 except Exception as error:
-
-    st.error(
-        "Could not prepare the knowledge base."
-    )
+    st.error("Could not prepare the CyberLaw knowledge base.")
 
     st.code(
         str(error),
-        language="text"
+        language="text",
     )
 
     st.info(
-        "Make sure your Google Drive PDF is publicly "
-        "accessible and contains readable text."
+        "Check that your Google Drive PDF is publicly accessible "
+        "and that the file contains selectable text."
     )
 
     st.stop()
-
-
-# ============================================================
-# KNOWLEDGE BASE METRIC
-# ============================================================
-
-with st.sidebar:
-
-    st.metric(
-        "Indexed chunks",
-        len(chunks)
-    )
 
 
 # ============================================================
@@ -1344,95 +973,58 @@ with st.sidebar:
 if page == "AI Assistant":
 
     st.markdown(
-        '<div class="main-title">'
-        '⚖️ CyberLaw Pakistan AI'
-        '</div>',
-        unsafe_allow_html=True
+        '<div class="main-title">⚖️ CyberLaw Pakistan AI</div>',
+        unsafe_allow_html=True,
     )
 
     st.markdown(
         '<div class="subtitle">'
-        'Ask questions about Pakistani cyber law '
-        'using the configured legal knowledge base.'
-        '</div>',
-        unsafe_allow_html=True
+        "Ask questions about the Pakistani cyber-law source document."
+        "</div>",
+        unsafe_allow_html=True,
     )
 
     st.info(
-        "This application provides AI-assisted legal "
-        "information based on the configured source PDF. "
-        "It is not a substitute for professional legal advice."
+        "This application provides AI-assisted legal information based on "
+        "the configured PDF. It is not a substitute for advice from a "
+        "qualified lawyer."
     )
 
-    if st.button(
-        "🗑️ Clear conversation"
-    ):
-
+    if "messages" not in st.session_state:
         st.session_state.messages = []
-        st.session_state.prompt_count = 0
-        st.session_state.total_tokens = 0
 
+    if st.button(
+        "Clear conversation",
+        type="secondary",
+    ):
+        st.session_state.messages = []
         st.rerun()
 
-    # --------------------------------------------------------
-    # PREVIOUS MESSAGES
-    # --------------------------------------------------------
-
     for message in st.session_state.messages:
-
-        with st.chat_message(
-            message["role"]
-        ):
-
-            st.markdown(
-                message["content"]
-            )
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
             if (
                 message["role"] == "assistant"
                 and show_sources
                 and message.get("sources")
             ):
-
-                with st.expander(
-                    "📚 Retrieved sources"
-                ):
-
-                    for i, source in enumerate(
-                        message["sources"],
-                        start=1
-                    ):
-
+                with st.expander("Retrieved sources"):
+                    for source in message["sources"]:
                         st.markdown(
                             f"""
-**Source {i} — Page {source["page"]}**
-
+**Page {source["page"]}**  
 Similarity: `{source["score"]:.4f}`
 
 {source["text"]}
 """
                         )
 
-    # --------------------------------------------------------
-    # CHAT INPUT
-    # --------------------------------------------------------
-
     question = st.chat_input(
         "Ask a question about Pakistani cyber law..."
     )
 
     if question:
-
-        if not GROQ_API_KEY:
-
-            st.error(
-                "GROQ_API_KEY is not configured. "
-                "Add GROQ_API_KEY to Streamlit Secrets."
-            )
-
-            st.stop()
-
-        st.session_state.prompt_count += 1
 
         st.session_state.messages.append(
             {
@@ -1442,71 +1034,60 @@ Similarity: `{source["score"]:.4f}`
         )
 
         with st.chat_message("user"):
-
-            st.markdown(
-                question
-            )
+            st.markdown(question)
 
         with st.chat_message("assistant"):
 
             try:
-
-                with st.spinner(
-                    "Searching legal sources..."
-                ):
+                with st.spinner("Searching the legal knowledge base..."):
 
                     results = retrieve_documents(
-                        question,
-                        index,
-                        chunks,
-                        metadata,
-                        top_k
+                        question=question,
+                        index=index,
+                        chunks=chunks,
+                        metadata=metadata,
+                        top_k=top_k,
                     )
 
-                context = create_context(
-                    results
+                context = create_context(results)
+
+                history = build_conversation_history(
+                    st.session_state.messages[:-1]
                 )
 
-                history = build_history()
-
-                with st.spinner(
-                    "Generating answer..."
-                ):
+                with st.spinner("Generating answer..."):
 
                     answer = ask_groq(
                         question=question,
                         context=context,
                         history=history,
+                        api_key=groq_api_key,
                         model_name=groq_model,
                         technical_level=technical_level,
                         response_size=response_size,
                         language=language,
-                        answer_style=answer_style
+                        answer_style=answer_style,
                     )
 
-                st.markdown(
-                    answer
-                )
+                st.markdown(answer)
 
-                if (
-                    show_sources
-                    and results
-                ):
+                if show_sources and results:
 
                     with st.expander(
-                        "📚 Retrieved sources"
+                        "Retrieved sources",
+                        expanded=False,
                     ):
 
                         for i, result in enumerate(
                             results,
-                            start=1
+                            start=1,
                         ):
 
                             st.markdown(
                                 f"""
 **Source {i} — Page {result["page"]}**
 
-Similarity: `{result["score"]:.4f}`
+Similarity score: `{result["score"]:.4f}`
 
 {result["text"]}
 """
@@ -1523,13 +1104,11 @@ Similarity: `{result["score"]:.4f}`
             except Exception as error:
 
                 error_message = (
-                    "Unable to generate the answer.\n\n"
-                    f"Error: `{error}`"
+                    "I could not generate the answer.\n\n"
+                    f"**Error:** `{error}`"
                 )
 
-                st.error(
-                    error_message
-                )
+                st.error(error_message)
 
                 st.session_state.messages.append(
                     {
@@ -1547,197 +1126,136 @@ Similarity: `{result["score"]:.4f}`
 elif page == "File a Complaint":
 
     st.markdown(
-        '<div class="main-title">'
-        '📝 Cybercrime Complaint'
-        '</div>',
-        unsafe_allow_html=True
+        '<div class="main-title">📝 Cybercrime Complaint Draft</div>',
+        unsafe_allow_html=True,
     )
 
     st.markdown(
         '<div class="subtitle">'
-        'Generate a factual complaint draft using the legal knowledge base.'
-        '</div>',
-        unsafe_allow_html=True
+        "Describe the incident and generate a factual complaint draft."
+        "</div>",
+        unsafe_allow_html=True,
     )
 
     st.warning(
-        "This generates a draft only. Review it carefully before "
-        "submitting it to any authority."
+        "This creates a draft only. Review all details and legal references "
+        "before submitting a complaint to any authority."
     )
 
     incident = st.text_area(
         "Describe the incident",
         height=250,
         placeholder=(
-            "Describe what happened, when it happened, "
-            "which platform was involved, and any other relevant facts."
-        )
+            "Example:\n"
+            "Someone created a fake social media account using my name "
+            "and uploaded my photos without permission. The account URL is..."
+        ),
     )
 
     evidence = st.text_area(
-        "Evidence available",
+        "Evidence you have",
         height=150,
         placeholder=(
-            "Screenshots, URLs, messages, transaction records, "
-            "emails, phone numbers, etc."
-        )
+            "Screenshots, profile URL, messages, transaction records, "
+            "email headers, phone numbers, etc."
+        ),
     )
 
-    if st.button(
-        "📝 Generate complaint draft",
+    generate_button = st.button(
+        "Generate complaint draft",
         type="primary",
-        use_container_width=True
-    ):
+        use_container_width=True,
+    )
 
-        if not GROQ_API_KEY:
+    if generate_button:
 
+        if not groq_api_key:
             st.error(
-                "GROQ_API_KEY is not configured."
+                "Please enter your GROQ_API_KEY in the sidebar."
             )
-
             st.stop()
 
         if not incident.strip():
-
             st.error(
-                "Please describe the incident."
+                "Please describe the incident first."
             )
-
             st.stop()
 
-        complaint_query = (
-            incident
-            + "\n"
-            + evidence
-        )
-
-        with st.spinner(
-            "Searching legal sources..."
-        ):
-
-            results = retrieve_documents(
-                complaint_query,
-                index,
-                chunks,
-                metadata,
-                top_k
-            )
-
-        context = create_context(
-            results
-        )
-
-        client = get_groq_client()
-
-        prompt = f"""
-Create a professional cybercrime complaint draft.
-
-Language: {language}
-
+        complete_incident = f"""
 INCIDENT:
 {incident}
 
 EVIDENCE:
-{evidence}
-
-LEGAL SOURCE:
-{context}
-
-Rules:
-
-- Do not invent legal sections.
-- Do not invent penalties.
-- Do not invent authorities.
-- Do not make unsupported accusations.
-- Use placeholders where information is missing.
-- Mark the document as DRAFT.
-- Only mention legal provisions supported by the source.
-
-Structure:
-
-1. Subject
-2. Complainant information
-3. Incident details
-4. Suspect information
-5. Evidence
-6. Requested action
-7. Declaration
-8. Date and signature
+{evidence if evidence.strip() else "No evidence details supplied."}
 """
 
-        try:
+        with st.spinner(
+            "Searching the legal source..."
+        ):
 
-            response = client.chat.completions.create(
-                model=groq_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You create factual cybercrime "
-                            "complaint drafts."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    },
-                ],
-                temperature=0.1,
-                max_tokens=2500
+            results = retrieve_documents(
+                question=incident,
+                index=index,
+                chunks=chunks,
+                metadata=metadata,
+                top_k=top_k,
             )
 
-            complaint = (
-                response.choices[0]
-                .message
-                .content
-            )
+        context = create_context(results)
 
-            st.success(
-                "Complaint draft generated."
-            )
+        with st.spinner(
+            "Preparing complaint draft..."
+        ):
 
-            st.markdown(
-                "### 📄 Draft"
-            )
+            try:
+                complaint = generate_complaint(
+                    incident=complete_incident,
+                    context=context,
+                    api_key=groq_api_key,
+                    model_name=groq_model,
+                    language=language,
+                )
 
-            st.markdown(
-                complaint
-            )
+                st.success(
+                    "Complaint draft generated."
+                )
 
-            st.download_button(
-                "⬇️ Download draft",
-                data=complaint,
-                file_name=(
-                    "cybercrime_complaint_draft.txt"
-                ),
-                mime="text/plain",
-                use_container_width=True
-            )
+                st.markdown("### Draft")
 
-            if show_sources:
+                st.markdown(complaint)
 
-                with st.expander(
-                    "📚 Legal sources"
-                ):
+                st.download_button(
+                    "Download complaint draft",
+                    data=complaint,
+                    file_name="cybercrime_complaint_draft.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                )
 
-                    for i, result in enumerate(
-                        results,
-                        start=1
+                if show_sources:
+
+                    with st.expander(
+                        "Legal sources used"
                     ):
 
-                        st.markdown(
-                            f"""
+                        for i, result in enumerate(
+                            results,
+                            start=1,
+                        ):
+
+                            st.markdown(
+                                f"""
 **Source {i} — Page {result["page"]}**
 
 {result["text"]}
 """
-                        )
+                            )
 
-        except Exception as error:
+            except Exception as error:
 
-            st.error(
-                f"Could not generate complaint: {error}"
-            )
+                st.error(
+                    f"Could not generate the complaint: {error}"
+                )
 
 
 # ============================================================
@@ -1747,25 +1265,30 @@ Structure:
 elif page == "About":
 
     st.markdown(
-        '<div class="main-title">'
-        'ℹ️ About CyberLaw Pakistan AI'
-        '</div>',
-        unsafe_allow_html=True
+        '<div class="main-title">ℹ️ About</div>',
+        unsafe_allow_html=True,
     )
 
     st.markdown(
         """
-## What is this application?
+## CyberLaw Pakistan AI
 
 CyberLaw Pakistan AI is a Retrieval-Augmented Generation (RAG)
-application for asking questions about the configured Pakistani
-cyber-law PDF.
+application designed to answer questions using a Pakistani cyber-law
+PDF as its knowledge source.
 
-### RAG pipeline
+### How it works
 
-**PDF → Text Extraction → Chunking → Embeddings → FAISS → Retrieval → Groq → Answer**
+1. Downloads the legal PDF from Google Drive.
+2. Extracts text from the PDF.
+3. Splits the text into searchable chunks.
+4. Creates vector embeddings.
+5. Stores the embeddings in FAISS.
+6. Retrieves the most relevant legal passages.
+7. Sends the retrieved evidence to Groq.
+8. Generates an answer grounded in the retrieved source.
 
-### Technologies
+### Main technologies
 
 - Python
 - Streamlit
@@ -1775,52 +1298,45 @@ cyber-law PDF.
 - Groq
 - RAG
 
-### Security
+### Important limitation
 
-The Groq API key is **not displayed in the application UI**.
+The application can only provide reliable source-grounded answers
+when the supplied PDF contains the relevant legal information.
 
-For Streamlit Cloud, configure it using Streamlit Secrets:
+It should not be treated as a lawyer, court, government authority,
+or official legal-information service.
 
-`GROQ_API_KEY`
-
-### Legal limitation
-
-This application is an AI information tool.
-
-It does not replace:
-
-- a lawyer
-- a court
-- a government authority
-- official legal advice
-
-Important legal information should always be verified against
-current official sources and, where appropriate, with a qualified
-Pakistani lawyer.
+Always verify important legal matters against current official sources
+and obtain professional legal advice when necessary.
         """
     )
 
-    st.divider()
+    st.markdown("### Knowledge Base")
 
-    col1, col2, col3 = st.columns(3)
+    st.write(
+        f"PDF: `{os.path.basename(PDF_FILE)}`"
+    )
 
-    with col1:
+    st.write(
+        f"Indexed chunks: `{len(chunks)}`"
+    )
 
-        st.metric(
-            "Indexed chunks",
-            len(chunks)
-        )
+    st.write(
+        f"Embedding model: `{EMBEDDING_MODEL}`"
+    )
 
-    with col2:
+    st.write(
+        f"Groq model: `{groq_model}`"
+    )
 
-        st.metric(
-            "Prompts",
-            st.session_state.prompt_count
-        )
+    st.markdown(
+        """
+### Source configuration
 
-    with col3:
+The application is configured to use the Google Drive PDF supplied
+for this project.
 
-        st.metric(
-            "Tokens",
-            f"{st.session_state.total_tokens:,}"
-        )
+Make sure the Google Drive file sharing setting allows access to
+people with the link.
+        """
+    )
