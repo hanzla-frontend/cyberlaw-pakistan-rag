@@ -1,1233 +1,849 @@
-```python
 import os
 import re
 import html
-import hashlib
-from pathlib import Path
+import urllib.parse
+import urllib.request
+import urllib.error
 
-import requests
-import faiss
 import numpy as np
 import streamlit as st
-
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
+import faiss
 from groq import Groq
 
 
-# =========================================================
-# APP CONFIG
-# =========================================================
-
-APP_TITLE = "CyberLaw Pakistan AI"
-
-PDF_FILE_ID = "1d7xD2E1HrZBpkv16yHcqTb75C0MOzdmx"
-
-PDF_URL = (
-    f"https://drive.google.com/uc?export=download&id={PDF_FILE_ID}"
-)
-
-DATA_DIR = Path(".cyberlaw_data")
-DATA_DIR.mkdir(exist_ok=True)
-
-PDF_FILE = DATA_DIR / "pakistan_cyber_law.pdf"
-INDEX_FILE = DATA_DIR / "cyberlaw.index"
-CHUNKS_FILE = DATA_DIR / "chunks.npy"
-META_FILE = DATA_DIR / "metadata.txt"
-
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-
-DEFAULT_MODEL = os.getenv(
-    "GROQ_MODEL",
-    "openai/gpt-oss-120b"
-)
-
-
-# =========================================================
-# PAGE CONFIG
-# =========================================================
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
 st.set_page_config(
-    page_title=APP_TITLE,
+    page_title="CyberLaw Pakistan AI",
     page_icon="⚖️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-
-# =========================================================
-# SESSION STATE
-# =========================================================
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "theme" not in st.session_state:
-    st.session_state.theme = "Dark"
-
-if "page" not in st.session_state:
-    st.session_state.page = "AI Assistant"
-
-
-# =========================================================
-# THEME
-# =========================================================
-
-def apply_theme(theme):
-
-    if theme == "Dark":
-
-        bg = "#080b12"
-        card = "#111722"
-        card2 = "#171e2b"
-        text = "#f8fafc"
-        muted = "#c5cedb"
-        border = "#2b3545"
-        accent = "#ff7a18"
-        accent2 = "#ff9f43"
-        input_bg = "#0d131d"
-
-    else:
-
-        bg = "#f5f7fb"
-        card = "#ffffff"
-        card2 = "#f0f3f8"
-        text = "#111827"
-        muted = "#596579"
-        border = "#d9e0ea"
-        accent = "#e85d04"
-        accent2 = "#ff7a18"
-        input_bg = "#ffffff"
-
-    st.markdown(
-        f"""
-        <style>
-
-        .stApp {{
-            background: {bg};
-        }}
-
-        .main {{
-            color: {text};
-        }}
-
-        .block-container {{
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-        }}
-
-        /* HERO */
-
-        .hero {{
-            background: {card};
-            border: 1px solid {border};
-            border-radius: 24px;
-            padding: 32px;
-            margin-bottom: 26px;
-            animation: slideDown 0.55s ease;
-            box-shadow: 0 15px 45px rgba(0, 0, 0, 0.08);
-        }}
-
-        .hero-title {{
-            color: {text} !important;
-            font-size: 42px;
-            font-weight: 800;
-            line-height: 1.2;
-            letter-spacing: -1px;
-            margin: 0;
-        }}
-
-        .hero-title span {{
-            color: {accent} !important;
-        }}
-
-        .hero-subtitle {{
-            color: {muted} !important;
-            font-size: 16px;
-            line-height: 1.7;
-            margin-top: 12px;
-            max-width: 850px;
-        }}
-
-        /* BADGES */
-
-        .badge-container {{
-            margin-top: 20px;
-        }}
-
-        .badge {{
-            display: inline-block;
-            color: {accent} !important;
-            background: rgba(255, 122, 24, 0.12);
-            border: 1px solid rgba(255, 122, 24, 0.30);
-            padding: 6px 12px;
-            border-radius: 50px;
-            font-size: 12px;
-            font-weight: 700;
-            margin-right: 6px;
-            margin-bottom: 5px;
-        }}
-
-        /* FEATURE CARDS */
-
-        .feature-card {{
-            background: {card};
-            border: 1px solid {border};
-            border-radius: 18px;
-            padding: 20px;
-            min-height: 145px;
-            color: {text} !important;
-            animation: slideUp 0.5s ease;
-            transition: all 0.25s ease;
-        }}
-
-        .feature-card:hover {{
-            transform: translateY(-4px);
-            border-color: {accent};
-        }}
-
-        .feature-icon {{
-            font-size: 28px;
-            margin-bottom: 8px;
-        }}
-
-        .feature-title {{
-            color: {text} !important;
-            font-size: 17px;
-            font-weight: 700;
-        }}
-
-        .feature-text {{
-            color: {muted} !important;
-            font-size: 13px;
-            line-height: 1.6;
-            margin-top: 6px;
-        }}
-
-        /* CARDS */
-
-        .custom-card {{
-            background: {card};
-            border: 1px solid {border};
-            border-radius: 20px;
-            padding: 22px;
-            color: {text} !important;
-            animation: slideUp 0.5s ease;
-        }}
-
-        .custom-card h3,
-        .custom-card h4,
-        .custom-card p {{
-            color: {text} !important;
-        }}
-
-        /* SIDEBAR */
-
-        section[data-testid="stSidebar"] {{
-            background: {card};
-            border-right: 1px solid {border};
-        }}
-
-        section[data-testid="stSidebar"] * {{
-            color: {text};
-        }}
-
-        /* CHAT */
-
-        .user-message {{
-            background: linear-gradient(
-                135deg,
-                {accent},
-                {accent2}
-            );
-            color: #ffffff !important;
-            padding: 15px 18px;
-            border-radius: 18px 18px 5px 18px;
-            margin: 12px 0 12px auto;
-            max-width: 82%;
-            animation: slideRight 0.35s ease;
-        }}
-
-        .user-message strong {{
-            color: #ffffff !important;
-        }}
-
-        .assistant-message {{
-            background: {card};
-            border: 1px solid {border};
-            color: {text} !important;
-            padding: 18px;
-            border-radius: 18px 18px 18px 5px;
-            margin: 12px auto 12px 0;
-            max-width: 92%;
-            animation: slideLeft 0.35s ease;
-        }}
-
-        .assistant-message strong {{
-            color: {accent} !important;
-        }}
-
-        /* SOURCES */
-
-        .source-card {{
-            background: {card2};
-            border-left: 4px solid {accent};
-            padding: 14px 16px;
-            margin: 10px 0;
-            border-radius: 10px;
-            color: {text} !important;
-        }}
-
-        .source-title {{
-            color: {text} !important;
-            font-weight: 700;
-        }}
-
-        .source-page {{
-            color: {muted} !important;
-            font-size: 12px;
-            margin-top: 3px;
-        }}
-
-        .source-text {{
-            color: {text} !important;
-            font-size: 13px;
-            line-height: 1.6;
-            margin-top: 10px;
-        }}
-
-        /* COMPLAINT */
-
-        .complaint-header {{
-            background:
-                linear-gradient(
-                    135deg,
-                    rgba(255, 122, 24, 0.14),
-                    {card}
-                );
-            border: 1px solid {border};
-            border-radius: 22px;
-            padding: 28px;
-            margin-bottom: 25px;
-            animation: slideDown 0.5s ease;
-        }}
-
-        .complaint-title {{
-            color: {text} !important;
-            font-size: 32px;
-            font-weight: 800;
-        }}
-
-        .complaint-subtitle {{
-            color: {muted} !important;
-            font-size: 15px;
-            line-height: 1.7;
-            margin-top: 8px;
-        }}
-
-        /* INPUTS */
-
-        .stTextInput input,
-        .stTextArea textarea {{
-            background: {input_bg} !important;
-            color: {text} !important;
-            border: 1px solid {border} !important;
-            border-radius: 12px !important;
-        }}
-
-        .stTextInput input:focus,
-        .stTextArea textarea:focus {{
-            border-color: {accent} !important;
-            box-shadow: 0 0 0 1px {accent} !important;
-        }}
-
-        .stTextInput input::placeholder,
-        .stTextArea textarea::placeholder {{
-            color: {muted} !important;
-            opacity: 0.8;
-        }}
-
-        /* BUTTONS */
-
-        .stButton > button {{
-            border-radius: 12px;
-            border: 1px solid {border};
-            min-height: 42px;
-            transition: all 0.2s ease;
-        }}
-
-        .stButton > button:hover {{
-            border-color: {accent};
-            transform: translateY(-1px);
-        }}
-
-        /* SELECTBOX */
-
-        div[data-baseweb="select"] > div {{
-            background: {input_bg};
-            border-color: {border};
-        }}
-
-        /* FOOTER */
-
-        .footer {{
-            text-align: center;
-            color: {muted};
-            padding: 35px 10px 10px;
-            font-size: 12px;
-        }}
-
-        /* ANIMATIONS */
-
-        @keyframes slideUp {{
-            from {{
-                opacity: 0;
-                transform: translateY(20px);
-            }}
-
-            to {{
-                opacity: 1;
-                transform: translateY(0);
-            }}
-        }}
-
-        @keyframes slideDown {{
-            from {{
-                opacity: 0;
-                transform: translateY(-20px);
-            }}
-
-            to {{
-                opacity: 1;
-                transform: translateY(0);
-            }}
-        }}
-
-        @keyframes slideLeft {{
-            from {{
-                opacity: 0;
-                transform: translateX(-20px);
-            }}
-
-            to {{
-                opacity: 1;
-                transform: translateX(0);
-            }}
-        }}
-
-        @keyframes slideRight {{
-            from {{
-                opacity: 0;
-                transform: translateX(20px);
-            }}
-
-            to {{
-                opacity: 1;
-                transform: translateX(0);
-            }}
-        }}
-
-        </style>
-        """,
-        unsafe_allow_html=True,
+APP_NAME = "CyberLaw Pakistan AI"
+
+# Your Google Drive PDF
+GOOGLE_DRIVE_URL = (
+    "https://drive.google.com/file/d/"
+    "1d7xD2E1HrZBpkv16yHcqTb75C0MOzdmx/view?usp=sharing"
+)
+
+DATA_DIR = ".cyberlaw_data"
+PDF_FILE = os.path.join(DATA_DIR, "pakistan_cyber_law.pdf")
+INDEX_FILE = os.path.join(DATA_DIR, "cyberlaw.index")
+CHUNKS_FILE = os.path.join(DATA_DIR, "chunks.npy")
+METADATA_FILE = os.path.join(DATA_DIR, "metadata.npy")
+
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
+
+os.makedirs(DATA_DIR, exist_ok=True)
+
+
+# ============================================================
+# STYLING
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+    .main-title {
+        font-size: 42px;
+        font-weight: 800;
+        margin-bottom: 5px;
+    }
+
+    .subtitle {
+        font-size: 17px;
+        opacity: 0.75;
+        margin-bottom: 25px;
+    }
+
+    .info-box {
+        padding: 18px;
+        border-radius: 12px;
+        border: 1px solid rgba(128,128,128,0.25);
+        margin-bottom: 15px;
+    }
+
+    .source-box {
+        padding: 12px;
+        border-radius: 10px;
+        border-left: 4px solid #888;
+        margin-top: 8px;
+        font-size: 14px;
+    }
+
+    .warning-box {
+        padding: 15px;
+        border-radius: 10px;
+        background: rgba(255, 193, 7, 0.10);
+        border: 1px solid rgba(255, 193, 7, 0.35);
+    }
+
+    .success-box {
+        padding: 15px;
+        border-radius: 10px;
+        background: rgba(40, 167, 69, 0.10);
+        border: 1px solid rgba(40, 167, 69, 0.35);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# GOOGLE DRIVE FUNCTIONS
+# ============================================================
+
+def extract_google_drive_file_id(url):
+    """
+    Extract a Google Drive file ID from common Drive URL formats.
+    """
+
+    if not url:
+        return None
+
+    patterns = [
+        r"/file/d/([a-zA-Z0-9_-]+)",
+        r"[?&]id=([a-zA-Z0-9_-]+)",
+        r"/open\?id=([a-zA-Z0-9_-]+)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+
+    # If user directly provides the ID
+    if re.fullmatch(r"[a-zA-Z0-9_-]{20,}", url.strip()):
+        return url.strip()
+
+    return None
+
+
+def build_google_drive_download_url(file_id):
+    return (
+        "https://drive.google.com/uc?"
+        + urllib.parse.urlencode(
+            {
+                "export": "download",
+                "id": file_id,
+            }
+        )
     )
 
 
-apply_theme(st.session_state.theme)
+def download_google_drive_pdf(url, destination):
+    """
+    Download a publicly shared Google Drive PDF.
 
+    Handles:
+    - /file/d/.../view URLs
+    - uc?export=download URLs
+    - Google Drive confirmation pages
+    """
 
-# =========================================================
-# GROQ KEY
-# =========================================================
+    file_id = extract_google_drive_file_id(url)
 
-def get_groq_key():
-
-    try:
-
-        key = st.secrets.get("GROQ_API_KEY")
-
-        if key:
-            return key
-
-    except Exception:
-        pass
-
-    return os.getenv("GROQ_API_KEY")
-
-
-# =========================================================
-# DOWNLOAD PDF FROM GOOGLE DRIVE
-# =========================================================
-
-def download_pdf():
-
-    # Check cached PDF first
-    if PDF_FILE.exists():
-
-        try:
-
-            if PDF_FILE.stat().st_size > 1000:
-
-                with open(PDF_FILE, "rb") as file:
-
-                    if file.read(5) == b"%PDF-":
-                        return True
-
-        except Exception:
-            pass
-
-    try:
-
-        session = requests.Session()
-
-        response = session.get(
-            PDF_URL,
-            timeout=60,
-            allow_redirects=True
+    if not file_id:
+        raise ValueError(
+            "Could not extract the Google Drive file ID from the provided URL."
         )
 
-        response.raise_for_status()
+    download_url = build_google_drive_download_url(file_id)
 
-        content = response.content
+    opener = urllib.request.build_opener()
+    opener.addheaders = [
+        (
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 Chrome/131 Safari/537.36",
+        )
+    ]
 
-        # Direct PDF
-        if content[:5] == b"%PDF-":
+    try:
+        response = opener.open(download_url, timeout=60)
+        content = response.read()
 
-            PDF_FILE.write_bytes(content)
+        content_type = response.headers.get("Content-Type", "").lower()
 
-            return True
+        # A real PDF normally starts with %PDF-
+        if content.startswith(b"%PDF-") or "application/pdf" in content_type:
+            with open(destination, "wb") as file:
+                file.write(content)
 
-        # Google Drive confirmation page
-        html_content = content.decode(
-            "utf-8",
-            errors="ignore"
+            return destination
+
+        # Google Drive may return an HTML confirmation page.
+        text = content.decode("utf-8", errors="ignore")
+
+        token_match = re.search(
+            r'name="confirm"\s+value="([^"]+)"',
+            text,
+            re.IGNORECASE,
         )
 
-        confirm_url = None
-
-        patterns = [
-            r'href="(/uc\?export=download[^"]+)"',
-            r'href="(https://drive\.usercontent\.google\.com/download[^"]+)"',
-            r'"downloadUrl":"([^"]+)"'
-        ]
-
-        for pattern in patterns:
-
-            match = re.search(
-                pattern,
-                html_content
+        if not token_match:
+            token_match = re.search(
+                r"confirm=([0-9A-Za-z_-]+)",
+                text,
+                re.IGNORECASE,
             )
 
-            if match:
+        if token_match:
+            confirm_token = token_match.group(1)
 
-                confirm_url = match.group(1)
+            confirm_url = (
+                "https://drive.usercontent.google.com/download?"
+                + urllib.parse.urlencode(
+                    {
+                        "id": file_id,
+                        "export": "download",
+                        "confirm": confirm_token,
+                    }
+                )
+            )
 
-                confirm_url = (
-                    confirm_url
-                    .replace("&amp;", "&")
-                    .replace("\\u003d", "=")
-                    .replace("\\u0026", "&")
+            response = opener.open(confirm_url, timeout=120)
+            pdf_content = response.read()
+
+            if not pdf_content.startswith(b"%PDF-"):
+                raise ValueError(
+                    "Google Drive returned a response that is not a PDF. "
+                    "Make sure the file is publicly accessible."
                 )
 
-                if confirm_url.startswith("/"):
-                    confirm_url = (
-                        "https://drive.google.com"
-                        + confirm_url
-                    )
+            with open(destination, "wb") as file:
+                file.write(pdf_content)
 
-                break
+            return destination
 
-        if confirm_url:
-
-            response = session.get(
-                confirm_url,
-                timeout=60,
-                allow_redirects=True
+        # Another possible Google Drive download form
+        confirm_url = (
+            "https://drive.usercontent.google.com/download?"
+            + urllib.parse.urlencode(
+                {
+                    "id": file_id,
+                    "export": "download",
+                }
             )
-
-            response.raise_for_status()
-
-            content = response.content
-
-            if content[:5] == b"%PDF-":
-
-                PDF_FILE.write_bytes(content)
-
-                return True
-
-        # Last fallback: try Drive alt=media endpoint
-        fallback_url = (
-            f"https://drive.google.com/uc"
-            f"?export=download&id={PDF_FILE_ID}"
         )
 
-        response = session.get(
-            fallback_url,
-            timeout=60,
-            allow_redirects=True
+        response = opener.open(confirm_url, timeout=120)
+        pdf_content = response.read()
+
+        if pdf_content.startswith(b"%PDF-"):
+            with open(destination, "wb") as file:
+                file.write(pdf_content)
+
+            return destination
+
+        raise ValueError(
+            "Google Drive did not return a PDF. "
+            "Check that the Drive file is shared as "
+            "'Anyone with the link'."
         )
 
-        response.raise_for_status()
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(
+            f"Google Drive download failed with HTTP {error.code}."
+        ) from error
 
-        content = response.content
-
-        if content[:5] == b"%PDF-":
-
-            PDF_FILE.write_bytes(content)
-
-            return True
-
-        PDF_FILE.unlink(
-            missing_ok=True
-        )
-
-        return False
-
-    except Exception as error:
-
-        PDF_FILE.unlink(
-            missing_ok=True
-        )
-
-        st.error(
-            f"PDF download error: {error}"
-        )
-
-        return False
+    except urllib.error.URLError as error:
+        raise RuntimeError(
+            f"Could not connect to Google Drive: {error.reason}"
+        ) from error
 
 
-# =========================================================
-# CLEAN TEXT
-# =========================================================
+# ============================================================
+# PDF PROCESSING
+# ============================================================
 
-def clean_text(text):
+def extract_pdf_pages(pdf_path):
+    """
+    Extract text page-by-page from the PDF.
+    """
 
-    text = text.replace(
-        "\x00",
-        " "
-    )
-
-    text = re.sub(
-        r"\s+",
-        " ",
-        text
-    )
-
-    return text.strip()
-
-
-# =========================================================
-# EXTRACT PDF
-# =========================================================
-
-def extract_pdf():
-
-    reader = PdfReader(
-        str(PDF_FILE)
-    )
+    reader = PdfReader(pdf_path)
 
     pages = []
 
-    for page_number, page in enumerate(
-        reader.pages,
-        start=1
-    ):
-
+    for page_number, page in enumerate(reader.pages, start=1):
         try:
-
             text = page.extract_text() or ""
-
         except Exception:
-
             text = ""
 
-        text = clean_text(text)
+        text = re.sub(r"\s+", " ", text).strip()
 
         if text:
-
             pages.append(
                 {
                     "page": page_number,
-                    "text": text
+                    "text": text,
                 }
             )
 
     return pages
 
 
-# =========================================================
-# CREATE LEGAL CHUNKS
-# =========================================================
-
 def create_chunks(
     pages,
     chunk_size=1000,
-    overlap=180
+    overlap=150,
 ):
+    """
+    Split PDF text into overlapping chunks.
+
+    Each chunk keeps its original PDF page number.
+    """
+
+    if overlap >= chunk_size:
+        raise ValueError("Chunk overlap must be smaller than chunk size.")
 
     chunks = []
+    metadata = []
 
-    for item in pages:
+    for page_data in pages:
+        page_number = page_data["page"]
+        text = page_data["text"]
 
-        text = item["text"]
-        page = item["page"]
+        if not text:
+            continue
 
         start = 0
 
         while start < len(text):
-
-            end = start + chunk_size
+            end = min(start + chunk_size, len(text))
 
             chunk = text[start:end].strip()
 
-            if len(chunk) > 80:
-
-                chunks.append(
+            if chunk:
+                chunks.append(chunk)
+                metadata.append(
                     {
-                        "text": chunk,
-                        "page": page
+                        "page": page_number,
                     }
                 )
 
-            next_start = end - overlap
-
-            if next_start <= start:
+            if end >= len(text):
                 break
 
-            start = next_start
+            start = end - overlap
 
-    return chunks
+    return chunks, metadata
 
 
-# =========================================================
+# ============================================================
 # EMBEDDING MODEL
-# =========================================================
+# ============================================================
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_embedding_model():
+    return SentenceTransformer(EMBEDDING_MODEL)
 
-    return SentenceTransformer(
-        EMBEDDING_MODEL
+
+# ============================================================
+# BUILD / LOAD VECTOR DATABASE
+# ============================================================
+
+def database_exists():
+    return (
+        os.path.exists(PDF_FILE)
+        and os.path.exists(INDEX_FILE)
+        and os.path.exists(CHUNKS_FILE)
+        and os.path.exists(METADATA_FILE)
     )
 
 
-# =========================================================
-# HASH
-# =========================================================
-
-def calculate_hash():
-
-    sha = hashlib.sha256()
-
-    with open(
-        PDF_FILE,
-        "rb"
-    ) as file:
-
-        while True:
-
-            data = file.read(
-                1024 * 1024
-            )
-
-            if not data:
-                break
-
-            sha.update(data)
-
-    return sha.hexdigest()
-
-
-# =========================================================
-# BUILD VECTOR DATABASE
-# =========================================================
-
-def build_database(force=False):
-
-    pdf_hash = calculate_hash()
-
-    if (
-        not force
-        and INDEX_FILE.exists()
-        and CHUNKS_FILE.exists()
-        and META_FILE.exists()
-    ):
-
-        try:
-
-            stored_hash = META_FILE.read_text(
-                encoding="utf-8"
-            ).strip()
-
-            if stored_hash == pdf_hash:
-
-                index = faiss.read_index(
-                    str(INDEX_FILE)
-                )
-
-                chunks = np.load(
-                    CHUNKS_FILE,
-                    allow_pickle=True
-                ).tolist()
-
-                if index.ntotal == len(chunks):
-
-                    return index, chunks
-
-        except Exception:
-            pass
-
-    pages = extract_pdf()
-
-    if not pages:
-
-        raise ValueError(
-            "No readable text was found in the PDF."
-        )
-
-    chunks = create_chunks(
-        pages
-    )
-
-    if not chunks:
-
-        raise ValueError(
-            "Unable to create text chunks."
-        )
-
-    model = load_embedding_model()
-
-    texts = [
-        item["text"]
-        for item in chunks
-    ]
-
-    embeddings = model.encode(
-        texts,
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-        show_progress_bar=False
-    )
-
-    embeddings = embeddings.astype(
-        "float32"
-    )
+def save_database(chunks, metadata, embeddings):
+    """
+    Save FAISS index, chunks and metadata.
+    """
 
     dimension = embeddings.shape[1]
 
-    index = faiss.IndexFlatIP(
-        dimension
-    )
+    index = faiss.IndexFlatIP(dimension)
 
-    index.add(
-        embeddings
-    )
+    # Normalize embeddings for cosine similarity
+    faiss.normalize_L2(embeddings)
 
-    faiss.write_index(
-        index,
-        str(INDEX_FILE)
-    )
+    index.add(embeddings.astype("float32"))
+
+    faiss.write_index(index, INDEX_FILE)
 
     np.save(
         CHUNKS_FILE,
-        np.array(
-            chunks,
-            dtype=object
+        np.array(chunks, dtype=object),
+        allow_pickle=True,
+    )
+
+    np.save(
+        METADATA_FILE,
+        np.array(metadata, dtype=object),
+        allow_pickle=True,
+    )
+
+
+def load_database():
+    index = faiss.read_index(INDEX_FILE)
+
+    chunks = np.load(
+        CHUNKS_FILE,
+        allow_pickle=True,
+    ).tolist()
+
+    metadata = np.load(
+        METADATA_FILE,
+        allow_pickle=True,
+    ).tolist()
+
+    return index, chunks, metadata
+
+
+def build_database(force_rebuild=False):
+    """
+    Download PDF if necessary and create/load vector database.
+    """
+
+    if database_exists() and not force_rebuild:
+        try:
+            return load_database()
+        except Exception:
+            pass
+
+    with st.status(
+        "Preparing the CyberLaw knowledge base...",
+        expanded=True,
+    ) as status:
+
+        st.write("Downloading the legal source PDF...")
+
+        download_google_drive_pdf(
+            GOOGLE_DRIVE_URL,
+            PDF_FILE,
         )
-    )
 
-    META_FILE.write_text(
-        pdf_hash,
-        encoding="utf-8"
-    )
+        st.write("Extracting PDF text...")
 
-    return index, chunks
+        pages = extract_pdf_pages(PDF_FILE)
+
+        if not pages:
+            raise ValueError(
+                "No readable text was extracted from the PDF. "
+                "The PDF may be scanned/image-only."
+            )
+
+        st.write(
+            f"Extracted text from {len(pages)} pages."
+        )
+
+        st.write("Creating text chunks...")
+
+        chunks, metadata = create_chunks(pages)
+
+        if not chunks:
+            raise ValueError(
+                "No text chunks were created from the PDF."
+            )
+
+        st.write(
+            f"Created {len(chunks)} searchable chunks."
+        )
+
+        st.write("Creating embeddings...")
+
+        model = load_embedding_model()
+
+        embeddings = model.encode(
+            chunks,
+            batch_size=32,
+            show_progress_bar=False,
+            convert_to_numpy=True,
+        )
+
+        embeddings = embeddings.astype("float32")
+
+        st.write("Building FAISS vector index...")
+
+        save_database(
+            chunks,
+            metadata,
+            embeddings,
+        )
+
+        status.update(
+            label="Knowledge base ready.",
+            state="complete",
+            expanded=False,
+        )
+
+    return load_database()
 
 
-# =========================================================
+# ============================================================
 # RETRIEVAL
-# =========================================================
+# ============================================================
 
-def retrieve(
+def retrieve_documents(
     question,
     index,
     chunks,
-    top_k=5
+    metadata,
+    top_k=5,
 ):
+    """
+    Retrieve the most relevant legal document chunks.
+    """
 
     model = load_embedding_model()
 
     query_embedding = model.encode(
         [question],
         convert_to_numpy=True,
-        normalize_embeddings=True
     ).astype("float32")
+
+    faiss.normalize_L2(query_embedding)
 
     scores, indices = index.search(
         query_embedding,
-        min(
-            top_k,
-            len(chunks)
-        )
+        min(top_k, len(chunks)),
     )
 
     results = []
 
-    for score, idx in zip(
-        scores[0],
-        indices[0]
-    ):
+    for score, idx in zip(scores[0], indices[0]):
 
-        if idx < 0:
+        if idx < 0 or idx >= len(chunks):
             continue
 
         results.append(
             {
-                "text": chunks[idx]["text"],
-                "page": chunks[idx]["page"],
-                "score": float(score)
+                "text": chunks[idx],
+                "page": metadata[idx]["page"],
+                "score": float(score),
             }
         )
 
     return results
 
 
-# =========================================================
-# CONTEXT
-# =========================================================
+# ============================================================
+# GROQ
+# ============================================================
 
-def create_context(results):
+def get_groq_client(api_key):
+    if not api_key:
+        return None
 
-    context = []
-
-    for i, item in enumerate(
-        results,
-        start=1
-    ):
-
-        context.append(
-            f"""
-[Source {i}, Page {item["page"]}]
-{item["text"]}
-"""
-        )
-
-    return "\n".join(context)
+    return Groq(api_key=api_key)
 
 
-# =========================================================
-# SYSTEM PROMPT
-# =========================================================
+def get_max_tokens(response_size):
+    mapping = {
+        "Short": 700,
+        "Medium": 1200,
+        "Detailed": 2000,
+        "Very detailed": 3000,
+    }
 
-def create_system_prompt(
+    return mapping.get(response_size, 1200)
+
+
+def build_system_prompt(
     technical_level,
     response_size,
     language,
-    answer_style
+    answer_style,
 ):
-
     return f"""
-You are CyberLaw Pakistan AI.
+You are CyberLaw Pakistan AI, a retrieval-augmented legal information assistant.
 
-You are a legal-information RAG assistant focused
-on Pakistani cyber-law information.
+Your task is to answer questions using ONLY the legal source material retrieved
+from the configured Pakistani cyber-law PDF.
 
-USER PREFERENCES
-----------------
+IMPORTANT LEGAL ACCURACY RULES:
+
+1. Do not invent laws, sections, clauses, penalties, fines, procedures,
+   authorities, dates or legal requirements.
+
+2. Do not claim that a specific section exists unless the retrieved source
+   supports it.
+
+3. If the retrieved evidence is insufficient, clearly say that the provided
+   source does not contain enough information to answer confidently.
+
+4. Never fabricate citations.
+
+5. Cite supporting evidence using:
+   [Source 1, Page X]
+   [Source 2, Page Y]
+
+6. If multiple sources support an answer, cite the relevant sources.
+
+7. Distinguish between:
+   - what the provided legal document says
+   - general explanation
+   - practical guidance
+
+8. Do not present yourself as a lawyer.
+
+9. For urgent legal matters, serious criminal allegations, arrests,
+   investigations or court proceedings, recommend consulting a qualified
+   Pakistani lawyer or relevant authority.
+
+10. Do not provide instructions that facilitate:
+    - hacking
+    - malware
+    - credential theft
+    - phishing
+    - unauthorized access
+    - evasion of law enforcement
+    - cyber attacks
+    - identity theft
+    - fraud
+    - abuse of computer systems
+
+11. If the user asks for harmful cyber instructions, refuse the harmful
+    operational part but provide a safe legal/security explanation when
+    appropriate.
+
+USER PREFERENCES:
+
 Technical level: {technical_level}
 Response size: {response_size}
 Language: {language}
 Answer style: {answer_style}
 
-CORE RULE
----------
-Use the retrieved legal document as your primary
-knowledge source.
+Answer entirely in the selected language.
 
-Do not treat your general model knowledge as evidence
-for a specific Pakistani legal claim.
-
-LEGAL ACCURACY
---------------
-1. Never invent:
-
-- sections
-- subsections
-- laws
-- penalties
-- authorities
-- procedures
-- legal claims
-
-2. Mention section numbers only when supported by
-the retrieved evidence.
-
-3. If the evidence is insufficient, explicitly say:
-
-"The available source does not provide enough
-information to answer this confidently."
-
-4. Separate your answer into appropriate parts such as:
-
-- Legal provision
-- Explanation
-- Practical implication
-
-5. Cite important claims using:
-
-[Source X, Page Y]
-
-6. Do not present the response as an official legal
-opinion.
-
-7. Recommend verification with a qualified lawyer
-or relevant official authority when appropriate.
-
-8. Do not claim that a law is currently in force unless
-the retrieved material supports that conclusion.
-
-CYBER SAFETY
-------------
-Do not provide operational instructions for:
-
-- hacking
-- credential theft
-- malware
-- unauthorized access
-- cyber fraud
-- bypassing security
-- evading law enforcement
-
-For harmful requests:
-
-- refuse the operational instructions
-- provide lawful defensive information
-- provide relevant legal information when supported
-
-COMPLAINTS
-----------
-If the user requests a cybercrime complaint draft:
-
-Create a professional structured draft.
-
-Use ONLY facts supplied by the user.
-
-Use ONLY legal provisions supported by retrieved evidence.
-
-Never fabricate facts.
-
-Never fabricate section numbers.
-
-Never fabricate authorities.
-
-Start with:
-
-AI-generated complaint draft — verify before submission.
-
-Include where appropriate:
-
-- Subject
-- Complainant statement
-- Incident details
-- Platform
-- Date/time
-- Evidence
-- Relevant legal provision
-- Requested action
-- Declaration
-- Missing information
-
-Never claim that the complaint has already been
-submitted to an authority.
-
-LANGUAGE
---------
-Answer in the requested language.
-
-If Urdu or Roman Urdu is selected, do not unnecessarily
-switch to English.
-
-RESPONSE STYLE
---------------
-Follow the requested response size and answer style.
-
-Be clear, accurate, and structured.
+Be precise, structured and easy to understand.
 """
 
 
-# =========================================================
-# MAX TOKENS
-# =========================================================
+def create_context(results):
+    if not results:
+        return "No relevant legal evidence was retrieved."
 
-def get_max_tokens(response_size):
+    context_parts = []
 
-    mapping = {
-        "Short": 800,
-        "Medium": 1400,
-        "Detailed": 2200,
-        "Very detailed": 3200
-    }
+    for i, result in enumerate(results, start=1):
+        context_parts.append(
+            f"""
+SOURCE {i}
+PDF Page: {result["page"]}
+Similarity Score: {result["score"]:.4f}
 
-    return mapping.get(
-        response_size,
-        1400
-    )
+TEXT:
+{result["text"]}
+"""
+        )
+
+    return "\n".join(context_parts)
 
 
-# =========================================================
-# GROQ
-# =========================================================
+def build_conversation_history(messages):
+    """
+    Include a small amount of previous conversation so follow-up questions
+    can work more naturally.
+    """
+
+    if not messages:
+        return ""
+
+    history = messages[-6:]
+
+    lines = []
+
+    for message in history:
+        role = message.get("role", "")
+        content = message.get("content", "")
+
+        if role in ("user", "assistant"):
+            lines.append(
+                f"{role.upper()}: {content}"
+            )
+
+    return "\n".join(lines)
+
 
 def ask_groq(
     question,
     context,
+    history,
+    api_key,
+    model_name,
     technical_level,
     response_size,
     language,
     answer_style,
-    model_name
 ):
+    client = get_groq_client(api_key)
 
-    api_key = get_groq_key()
-
-    if not api_key:
-
-        raise RuntimeError(
-            "GROQ_API_KEY is not configured."
+    if client is None:
+        raise ValueError(
+            "GROQ_API_KEY is missing."
         )
 
-    client = Groq(
-        api_key=api_key
-    )
-
-    system_prompt = create_system_prompt(
-        technical_level,
-        response_size,
-        language,
-        answer_style
+    system_prompt = build_system_prompt(
+        technical_level=technical_level,
+        response_size=response_size,
+        language=language,
+        answer_style=answer_style,
     )
 
     user_prompt = f"""
-RETRIEVED LEGAL EVIDENCE
-========================
-
+RETRIEVED LEGAL EVIDENCE:
 {context}
 
-USER QUESTION
-=============
+PREVIOUS CONVERSATION:
+{history if history else "No previous conversation."}
 
+CURRENT USER QUESTION:
 {question}
 
-INSTRUCTIONS
-============
+INSTRUCTIONS:
 
-Answer the user's question using the retrieved
-legal evidence.
+Answer the current question based primarily on the retrieved legal evidence.
 
-Cite important claims.
+If the evidence does not support a specific legal claim, say so.
 
-Do not invent unsupported information.
+Do not fill missing legal information with assumptions.
 
-If the evidence is insufficient, say so clearly.
+Include source citations in this exact style where applicable:
+[Source 1, Page X]
+
+Give a useful answer rather than simply repeating the source.
 """
 
     response = client.chat.completions.create(
         model=model_name,
-        temperature=0.1,
-        max_tokens=get_max_tokens(
-            response_size
-        ),
         messages=[
             {
                 "role": "system",
-                "content": system_prompt
+                "content": system_prompt,
             },
             {
                 "role": "user",
-                "content": user_prompt
-            }
-        ]
+                "content": user_prompt,
+            },
+        ],
+        temperature=0.1,
+        max_tokens=get_max_tokens(response_size),
     )
 
     return response.choices[0].message.content
 
 
-# =========================================================
+# ============================================================
+# COMPLAINT GENERATOR
+# ============================================================
+
+def generate_complaint(
+    incident,
+    context,
+    api_key,
+    model_name,
+    language,
+):
+    client = get_groq_client(api_key)
+
+    if client is None:
+        raise ValueError(
+            "GROQ_API_KEY is missing."
+        )
+
+    system_prompt = f"""
+You are an assistant helping users prepare a factual cybercrime complaint
+draft for Pakistan.
+
+Language: {language}
+
+Use the retrieved legal source only for legal references.
+
+Do not invent:
+- sections
+- laws
+- penalties
+- authorities
+- procedures
+- dates
+- evidence
+
+Do not make accusations beyond the facts supplied by the user.
+
+Clearly mark the result as a DRAFT that should be reviewed before submission.
+
+Do not provide false legal certainty.
+"""
+
+    user_prompt = f"""
+INCIDENT DETAILS:
+
+{incident}
+
+RELEVANT LEGAL SOURCE:
+
+{context}
+
+Create a professional complaint draft containing:
+
+1. Subject
+2. Complainant details placeholder
+3. Incident description
+4. Date/time placeholder if not supplied
+5. Platform/device placeholder if relevant
+6. Suspect information if supplied
+7. Evidence list
+8. Requested action
+9. Declaration
+10. Signature/date placeholders
+
+Only mention legal provisions when they are supported by the supplied
+retrieved source.
+"""
+
+    response = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": user_prompt,
+            },
+        ],
+        temperature=0.1,
+        max_tokens=2500,
+    )
+
+    return response.choices[0].message.content
+
+
+# ============================================================
 # SIDEBAR
-# =========================================================
+# ============================================================
 
 with st.sidebar:
 
-    st.markdown(
-        """
-        <div style="
-            font-size:26px;
-            font-weight:800;
-            margin-bottom:3px;
-        ">
-            ⚖️ CyberLaw
-        </div>
+    st.markdown("## ⚖️ CyberLaw Pakistan AI")
 
-        <div style="
-            font-size:13px;
-            opacity:0.7;
-            margin-bottom:25px;
-        ">
-            Pakistan Legal AI
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.markdown("### Navigation")
-
-    selected_page = st.radio(
+    page = st.radio(
         "Navigation",
         [
             "AI Assistant",
             "File a Complaint",
-            "About"
+            "About",
         ],
-        index=[
-            "AI Assistant",
-            "File a Complaint",
-            "About"
-        ].index(
-            st.session_state.page
-        ),
-        label_visibility="collapsed"
     )
-
-    if selected_page != st.session_state.page:
-
-        st.session_state.page = selected_page
-
-        st.rerun()
-
-    st.divider()
-
-    st.markdown("### Appearance")
-
-    selected_theme = st.radio(
-        "Theme",
-        [
-            "Dark",
-            "Light"
-        ],
-        index=(
-            0
-            if st.session_state.theme == "Dark"
-            else 1
-        ),
-        horizontal=True,
-        label_visibility="collapsed"
-    )
-
-    if selected_theme != st.session_state.theme:
-
-        st.session_state.theme = selected_theme
-
-        st.rerun()
 
     st.divider()
 
@@ -1239,8 +855,9 @@ with st.sidebar:
             "Beginner",
             "Intermediate",
             "Advanced",
-            "Legal / Professional"
-        ]
+            "Legal/Technical",
+        ],
+        index=0,
     )
 
     response_size = st.selectbox(
@@ -1249,346 +866,159 @@ with st.sidebar:
             "Short",
             "Medium",
             "Detailed",
-            "Very detailed"
+            "Very detailed",
         ],
-        index=1
+        index=1,
     )
 
     language = st.selectbox(
-        "Language",
+        "Response language",
         [
             "English",
             "Urdu",
-            "Roman Urdu"
-        ]
+            "Roman Urdu",
+        ],
+        index=0,
     )
 
     answer_style = st.selectbox(
         "Answer style",
         [
-            "Simple explanation",
-            "Legal analysis",
+            "Clear explanation",
             "Step-by-step",
-            "Practical scenario"
-        ]
+            "Bullet points",
+            "Professional legal information",
+        ],
+        index=0,
     )
 
     top_k = st.slider(
         "Retrieved sources",
-        min_value=3,
+        min_value=2,
         max_value=10,
-        value=5
-    )
-
-    model_name = st.text_input(
-        "Groq model",
-        value=DEFAULT_MODEL
+        value=5,
+        step=1,
     )
 
     show_sources = st.checkbox(
         "Show retrieved sources",
-        value=True
+        value=True,
     )
 
     st.divider()
 
-    if st.button(
+    st.markdown("### Groq")
+
+    groq_api_key = st.text_input(
+        "Groq API Key",
+        value=os.getenv("GROQ_API_KEY", ""),
+        type="password",
+        help="Your Groq API key.",
+    )
+
+    groq_model = st.text_input(
+        "Groq model",
+        value=DEFAULT_GROQ_MODEL,
+    )
+
+    st.divider()
+
+    st.markdown("### Knowledge Base")
+
+    if database_exists():
+        st.success("Knowledge base available.")
+    else:
+        st.warning("Knowledge base not built yet.")
+
+    rebuild = st.button(
         "🔄 Rebuild knowledge base",
-        use_container_width=True
-    ):
+        use_container_width=True,
+    )
 
-        for file in [
-            INDEX_FILE,
-            CHUNKS_FILE,
-            META_FILE
-        ]:
 
-            file.unlink(
-                missing_ok=True
-            )
+# ============================================================
+# DATABASE INITIALIZATION
+# ============================================================
 
-        st.cache_resource.clear()
-
-        st.success(
-            "Knowledge base rebuilt on next load."
+try:
+    if rebuild:
+        index, chunks, metadata = build_database(
+            force_rebuild=True
+        )
+    else:
+        index, chunks, metadata = build_database(
+            force_rebuild=False
         )
 
-        st.rerun()
+except Exception as error:
+    st.error("Could not prepare the CyberLaw knowledge base.")
 
-    if st.button(
-        "🗑️ Clear chat",
-        use_container_width=True
-    ):
-
-        st.session_state.messages = []
-
-        st.rerun()
-
-
-# =========================================================
-# PDF + DATABASE
-# =========================================================
-
-if not download_pdf():
-
-    st.error(
-        """
-        ### PDF download failed
-
-        Make sure the Google Drive file is configured as:
-
-        **Anyone with the link → Viewer**
-
-        The application cannot create the RAG knowledge
-        base until the PDF is publicly accessible.
-        """
+    st.code(
+        str(error),
+        language="text",
     )
 
     st.info(
-        f"""
-        Google Drive file ID:
-
-        `{PDF_FILE_ID}`
-        """
+        "Check that your Google Drive PDF is publicly accessible "
+        "and that the file contains selectable text."
     )
 
     st.stop()
 
 
-try:
-
-    index, chunks = build_database()
-
-except Exception as error:
-
-    st.error(
-        f"Knowledge base error: {error}"
-    )
-
-    st.stop()
-
-
-# =========================================================
+# ============================================================
 # AI ASSISTANT
-# =========================================================
+# ============================================================
 
-if st.session_state.page == "AI Assistant":
+if page == "AI Assistant":
 
     st.markdown(
-        """
-        <div class="hero">
-
-            <div class="hero-title">
-                🇵🇰 <span>CyberLaw</span> Pakistan AI
-            </div>
-
-            <div class="hero-subtitle">
-                Ask questions about Pakistani cyber law,
-                retrieve relevant legal provisions, and
-                understand them using source-based AI.
-            </div>
-
-            <div class="badge-container">
-
-                <span class="badge">RAG Powered</span>
-
-                <span class="badge">Pakistan Law</span>
-
-                <span class="badge">Groq AI</span>
-
-                <span class="badge">Source Based</span>
-
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True
+        '<div class="main-title">⚖️ CyberLaw Pakistan AI</div>',
+        unsafe_allow_html=True,
     )
 
-    # =====================================================
-    # FEATURES
-    # =====================================================
+    st.markdown(
+        '<div class="subtitle">'
+        "Ask questions about the Pakistani cyber-law source document."
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
-    col1, col2, col3, col4 = st.columns(4)
+    st.info(
+        "This application provides AI-assisted legal information based on "
+        "the configured PDF. It is not a substitute for advice from a "
+        "qualified lawyer."
+    )
 
-    with col1:
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-        st.markdown(
-            """
-            <div class="feature-card">
-
-                <div class="feature-icon">⚖️</div>
-
-                <div class="feature-title">
-                    Legal Analysis
-                </div>
-
-                <div class="feature-text">
-                    Understand Pakistani cyber-law
-                    information using the indexed source.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with col2:
-
-        st.markdown(
-            """
-            <div class="feature-card">
-
-                <div class="feature-icon">🔎</div>
-
-                <div class="feature-title">
-                    RAG Search
-                </div>
-
-                <div class="feature-text">
-                    Search relevant legal passages
-                    before generating an answer.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with col3:
-
-        st.markdown(
-            """
-            <div class="feature-card">
-
-                <div class="feature-icon">🌐</div>
-
-                <div class="feature-title">
-                    Multiple Languages
-                </div>
-
-                <div class="feature-text">
-                    Get explanations in English,
-                    Urdu or Roman Urdu.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with col4:
-
-        st.markdown(
-            """
-            <div class="feature-card">
-
-                <div class="feature-icon">📝</div>
-
-                <div class="feature-title">
-                    Complaint Draft
-                </div>
-
-                <div class="feature-text">
-                    Generate a structured
-                    AI-assisted complaint draft.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    st.markdown("### 💬 Ask CyberLaw Pakistan AI")
-
-    # =====================================================
-    # CHAT HISTORY
-    # =====================================================
+    if st.button(
+        "Clear conversation",
+        type="secondary",
+    ):
+        st.session_state.messages = []
+        st.rerun()
 
     for message in st.session_state.messages:
-
-        if message["role"] == "user":
-
-            safe_content = html.escape(
-                message["content"]
-            )
-
-            safe_content = safe_content.replace(
-                "\n",
-                "<br>"
-            )
-
-            st.markdown(
-                f"""
-                <div class="user-message">
-                    <strong>You</strong>
-                    <br><br>
-                    {safe_content}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        else:
-
-            st.markdown(
-                '<div class="assistant-message">',
-                unsafe_allow_html=True
-            )
-
-            st.markdown(
-                "**⚖️ CyberLaw AI**"
-            )
-
-            st.markdown(
-                message["content"]
-            )
-
-            st.markdown(
-                "</div>",
-                unsafe_allow_html=True
-            )
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
             if (
-                show_sources
+                message["role"] == "assistant"
+                and show_sources
                 and message.get("sources")
             ):
-
-                with st.expander(
-                    "📚 Retrieved legal sources"
-                ):
-
-                    for i, source in enumerate(
-                        message["sources"],
-                        start=1
-                    ):
-
+                with st.expander("Retrieved sources"):
+                    for source in message["sources"]:
                         st.markdown(
                             f"""
-                            <div class="source-card">
+**Page {source["page"]}**  
+Similarity: `{source["score"]:.4f}`
 
-                                <div class="source-title">
-                                    Source {i}
-                                </div>
-
-                                <div class="source-page">
-                                    Page {source["page"]}
-                                    · Similarity:
-                                    {source["score"]:.3f}
-                                </div>
-
-                                <div class="source-text">
-                                    {html.escape(source["text"])}
-                                </div>
-
-                            </div>
-                            """,
-                            unsafe_allow_html=True
+{source["text"]}
+"""
                         )
-
-    # =====================================================
-    # CHAT INPUT
-    # =====================================================
 
     question = st.chat_input(
         "Ask a question about Pakistani cyber law..."
@@ -1599,464 +1029,314 @@ if st.session_state.page == "AI Assistant":
         st.session_state.messages.append(
             {
                 "role": "user",
-                "content": question
+                "content": question,
             }
         )
 
-        with st.spinner(
-            "🔎 Searching legal sources..."
-        ):
+        with st.chat_message("user"):
+            st.markdown(question)
+
+        with st.chat_message("assistant"):
 
             try:
+                with st.spinner("Searching the legal knowledge base..."):
 
-                results = retrieve(
-                    question,
-                    index,
-                    chunks,
-                    top_k
+                    results = retrieve_documents(
+                        question=question,
+                        index=index,
+                        chunks=chunks,
+                        metadata=metadata,
+                        top_k=top_k,
+                    )
+
+                context = create_context(results)
+
+                history = build_conversation_history(
+                    st.session_state.messages[:-1]
                 )
 
-                context = create_context(
-                    results
-                )
+                with st.spinner("Generating answer..."):
 
-                answer = ask_groq(
-                    question,
-                    context,
-                    technical_level,
-                    response_size,
-                    language,
-                    answer_style,
-                    model_name
-                )
+                    answer = ask_groq(
+                        question=question,
+                        context=context,
+                        history=history,
+                        api_key=groq_api_key,
+                        model_name=groq_model,
+                        technical_level=technical_level,
+                        response_size=response_size,
+                        language=language,
+                        answer_style=answer_style,
+                    )
+
+                st.markdown(answer)
+
+                if show_sources and results:
+
+                    with st.expander(
+                        "Retrieved sources",
+                        expanded=False,
+                    ):
+
+                        for i, result in enumerate(
+                            results,
+                            start=1,
+                        ):
+
+                            st.markdown(
+                                f"""
+**Source {i} — Page {result["page"]}**
+
+Similarity score: `{result["score"]:.4f}`
+
+{result["text"]}
+"""
+                            )
 
                 st.session_state.messages.append(
                     {
                         "role": "assistant",
                         "content": answer,
-                        "sources": results
+                        "sources": results,
                     }
                 )
 
             except Exception as error:
 
+                error_message = (
+                    "I could not generate the answer.\n\n"
+                    f"**Error:** `{error}`"
+                )
+
+                st.error(error_message)
+
                 st.session_state.messages.append(
                     {
                         "role": "assistant",
-                        "content": (
-                            f"⚠️ Error: {error}"
-                        ),
-                        "sources": []
+                        "content": error_message,
+                        "sources": [],
                     }
                 )
 
-        st.rerun()
 
+# ============================================================
+# FILE A COMPLAINT
+# ============================================================
 
-# =========================================================
-# COMPLAINT PAGE
-# =========================================================
-
-elif st.session_state.page == "File a Complaint":
+elif page == "File a Complaint":
 
     st.markdown(
-        """
-        <div class="complaint-header">
-
-            <div class="complaint-title">
-                📝 Cybercrime Complaint Assistant
-            </div>
-
-            <div class="complaint-subtitle">
-                Describe your cyber incident and generate
-                an AI-assisted structured complaint draft.
-                Verify all information before official
-                submission.
-            </div>
-
-            <div class="badge-container">
-
-                <span class="badge">AI Draft</span>
-
-                <span class="badge">Evidence Based</span>
-
-                <span class="badge">Pakistan</span>
-
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True
+        '<div class="main-title">📝 Cybercrime Complaint Draft</div>',
+        unsafe_allow_html=True,
     )
 
-    st.markdown("### Incident Information")
+    st.markdown(
+        '<div class="subtitle">'
+        "Describe the incident and generate a factual complaint draft."
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
-    col1, col2 = st.columns(2)
+    st.warning(
+        "This creates a draft only. Review all details and legal references "
+        "before submitting a complaint to any authority."
+    )
 
-    with col1:
-
-        incident_type = st.selectbox(
-            "Incident type",
-            [
-                "Select incident type",
-                "Online harassment",
-                "Cyberstalking",
-                "Fake social media account",
-                "Identity misuse",
-                "Online fraud",
-                "Threat / blackmail",
-                "Unauthorized account access",
-                "Data / privacy issue",
-                "Other"
-            ]
-        )
-
-        platform = st.text_input(
-            "Platform / website",
-            placeholder=(
-                "e.g. Facebook, WhatsApp, Instagram"
-            )
-        )
-
-        incident_date = st.text_input(
-            "Date of incident",
-            placeholder=(
-                "e.g. 10 September 2026"
-            )
-        )
-
-    with col2:
-
-        suspect_known = st.selectbox(
-            "Is the person involved known?",
-            [
-                "No",
-                "Yes",
-                "Partially"
-            ]
-        )
-
-        evidence = st.text_area(
-            "Evidence available",
-            placeholder=(
-                "Screenshots, URLs, messages, "
-                "emails, transaction records, etc."
-            ),
-            height=120
-        )
-
-    incident_description = st.text_area(
-        "Describe what happened",
+    incident = st.text_area(
+        "Describe the incident",
+        height=250,
         placeholder=(
-            "Explain the incident in your own words. "
-            "Include what happened, where it happened, "
-            "who was involved, and relevant details."
+            "Example:\n"
+            "Someone created a fake social media account using my name "
+            "and uploaded my photos without permission. The account URL is..."
         ),
-        height=220
     )
 
-    additional_info = st.text_area(
-        "Additional information",
+    evidence = st.text_area(
+        "Evidence you have",
+        height=150,
         placeholder=(
-            "Add any other relevant facts..."
+            "Screenshots, profile URL, messages, transaction records, "
+            "email headers, phone numbers, etc."
         ),
-        height=120
     )
 
-    generate_complaint = st.button(
-        "⚖️ Generate Complaint Draft",
+    generate_button = st.button(
+        "Generate complaint draft",
         type="primary",
-        use_container_width=True
+        use_container_width=True,
     )
 
-    if generate_complaint:
+    if generate_button:
 
-        if not incident_description.strip():
-
-            st.warning(
-                "Please describe what happened first."
+        if not groq_api_key:
+            st.error(
+                "Please enter your GROQ_API_KEY in the sidebar."
             )
+            st.stop()
 
-        else:
+        if not incident.strip():
+            st.error(
+                "Please describe the incident first."
+            )
+            st.stop()
 
-            complaint_question = f"""
-Create a structured AI-generated cybercrime
-complaint draft.
+        complete_incident = f"""
+INCIDENT:
+{incident}
 
-Incident type:
-{incident_type}
-
-Platform:
-{platform}
-
-Date:
-{incident_date}
-
-Known suspect:
-{suspect_known}
-
-Evidence:
-{evidence}
-
-Incident description:
-{incident_description}
-
-Additional information:
-{additional_info}
-
-Requirements:
-
-1. Start with:
-
-AI-generated complaint draft — verify before submission.
-
-2. Identify potentially relevant Pakistani cyber-law
-provisions ONLY when supported by retrieved evidence.
-
-3. Do not invent section numbers.
-
-4. Do not invent authorities.
-
-5. Do not invent facts.
-
-6. Create a professional complaint structure.
-
-7. Include:
-
-- Subject
-- Complainant statement
-- Incident details
-- Platform
-- Date/time
-- Evidence
-- Relevant legal provision
-- Requested action
-- Declaration
-
-8. Identify information that still needs to be
-filled in by the complainant.
-
-9. If the retrieved evidence is insufficient to identify
-a legal provision, explicitly state that.
+EVIDENCE:
+{evidence if evidence.strip() else "No evidence details supplied."}
 """
 
-            with st.spinner(
-                "⚖️ Preparing complaint draft..."
-            ):
+        with st.spinner(
+            "Searching the legal source..."
+        ):
 
-                try:
+            results = retrieve_documents(
+                question=incident,
+                index=index,
+                chunks=chunks,
+                metadata=metadata,
+                top_k=top_k,
+            )
 
-                    results = retrieve(
-                        complaint_question,
-                        index,
-                        chunks,
-                        top_k
-                    )
+        context = create_context(results)
 
-                    context = create_context(
-                        results
-                    )
+        with st.spinner(
+            "Preparing complaint draft..."
+        ):
 
-                    complaint = ask_groq(
-                        complaint_question,
-                        context,
-                        "Legal / Professional",
-                        "Detailed",
-                        language,
-                        "Legal analysis",
-                        model_name
-                    )
+            try:
+                complaint = generate_complaint(
+                    incident=complete_incident,
+                    context=context,
+                    api_key=groq_api_key,
+                    model_name=groq_model,
+                    language=language,
+                )
 
-                    st.success(
-                        "Complaint draft generated."
-                    )
+                st.success(
+                    "Complaint draft generated."
+                )
 
-                    st.markdown(
-                        '<div class="custom-card">',
-                        unsafe_allow_html=True
-                    )
+                st.markdown("### Draft")
 
-                    st.markdown(
-                        complaint
-                    )
+                st.markdown(complaint)
 
-                    st.markdown(
-                        "</div>",
-                        unsafe_allow_html=True
-                    )
+                st.download_button(
+                    "Download complaint draft",
+                    data=complaint,
+                    file_name="cybercrime_complaint_draft.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                )
+
+                if show_sources:
 
                     with st.expander(
-                        "📚 Legal sources used"
+                        "Legal sources used"
                     ):
 
-                        for i, source in enumerate(
+                        for i, result in enumerate(
                             results,
-                            start=1
+                            start=1,
                         ):
 
                             st.markdown(
                                 f"""
-                                **Source {i} — Page {source["page"]}**
+**Source {i} — Page {result["page"]}**
 
-                                {source["text"]}
-                                """
+{result["text"]}
+"""
                             )
 
-                except Exception as error:
+            except Exception as error:
 
-                    st.error(
-                        f"Unable to generate complaint: {error}"
-                    )
-
-    st.info(
-        """
-        **Important:** This tool generates an
-        AI-assisted draft. It is not an official
-        legal complaint or legal opinion.
-
-        Verify the facts, applicable legal provisions,
-        and official submission procedure before
-        submitting a complaint.
-        """
-    )
+                st.error(
+                    f"Could not generate the complaint: {error}"
+                )
 
 
-# =========================================================
+# ============================================================
 # ABOUT
-# =========================================================
+# ============================================================
 
-elif st.session_state.page == "About":
+elif page == "About":
+
+    st.markdown(
+        '<div class="main-title">ℹ️ About</div>',
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         """
-        <div class="hero">
+## CyberLaw Pakistan AI
 
-            <div class="hero-title">
-                ⚖️ About
-                <span>CyberLaw Pakistan AI</span>
-            </div>
+CyberLaw Pakistan AI is a Retrieval-Augmented Generation (RAG)
+application designed to answer questions using a Pakistani cyber-law
+PDF as its knowledge source.
 
-            <div class="hero-subtitle">
-                An AI-powered Retrieval-Augmented Generation
-                application for understanding Pakistani
-                cyber-law information.
-            </div>
+### How it works
 
-        </div>
-        """,
-        unsafe_allow_html=True
+1. Downloads the legal PDF from Google Drive.
+2. Extracts text from the PDF.
+3. Splits the text into searchable chunks.
+4. Creates vector embeddings.
+5. Stores the embeddings in FAISS.
+6. Retrieves the most relevant legal passages.
+7. Sends the retrieved evidence to Groq.
+8. Generates an answer grounded in the retrieved source.
+
+### Main technologies
+
+- Python
+- Streamlit
+- PyPDF
+- Sentence Transformers
+- FAISS
+- Groq
+- RAG
+
+### Important limitation
+
+The application can only provide reliable source-grounded answers
+when the supplied PDF contains the relevant legal information.
+
+It should not be treated as a lawyer, court, government authority,
+or official legal-information service.
+
+Always verify important legal matters against current official sources
+and obtain professional legal advice when necessary.
+        """
     )
 
-    st.markdown("### How it works")
+    st.markdown("### Knowledge Base")
 
-    c1, c2, c3 = st.columns(3)
+    st.write(
+        f"PDF: `{os.path.basename(PDF_FILE)}`"
+    )
 
-    with c1:
+    st.write(
+        f"Indexed chunks: `{len(chunks)}`"
+    )
 
-        st.markdown(
-            """
-            <div class="custom-card">
+    st.write(
+        f"Embedding model: `{EMBEDDING_MODEL}`"
+    )
 
-                <h3>01 · Document</h3>
-
-                <p>
-                    The application downloads the configured
-                    Pakistan cyber-law PDF.
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with c2:
-
-        st.markdown(
-            """
-            <div class="custom-card">
-
-                <h3>02 · Retrieval</h3>
-
-                <p>
-                    The PDF is split into chunks and
-                    converted into vector embeddings.
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with c3:
-
-        st.markdown(
-            """
-            <div class="custom-card">
-
-                <h3>03 · Generation</h3>
-
-                <p>
-                    Relevant legal passages are provided
-                    to Groq before generating an answer.
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    st.markdown("### Technology")
+    st.write(
+        f"Groq model: `{groq_model}`"
+    )
 
     st.markdown(
         """
-        - **Python**
-        - **Streamlit**
-        - **FAISS**
-        - **Sentence Transformers**
-        - **Groq**
-        - **PyPDF**
-        - **Requests**
-        - **Retrieval-Augmented Generation**
+### Source configuration
+
+The application is configured to use the Google Drive PDF supplied
+for this project.
+
+Make sure the Google Drive file sharing setting allows access to
+people with the link.
         """
     )
-
-    st.markdown("### Legal disclaimer")
-
-    st.warning(
-        """
-        CyberLaw Pakistan AI provides informational
-        assistance based on its indexed source material.
-
-        It does not replace a qualified lawyer,
-        official government guidance, or an official
-        legal determination.
-
-        Always verify current Pakistani law and official
-        procedures before taking legal action.
-        """
-    )
-
-
-# =========================================================
-# FOOTER
-# =========================================================
-
-st.markdown(
-    """
-    <div class="footer">
-
-        ⚖️ CyberLaw Pakistan AI
-
-        <br>
-
-        AI-powered legal information assistant
-
-        <br><br>
-
-        Python · Streamlit · FAISS · Groq
-
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-```
