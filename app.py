@@ -1,9 +1,11 @@
+```python
 import os
 import re
+import html
 import hashlib
-import urllib.request
 from pathlib import Path
 
+import requests
 import faiss
 import numpy as np
 import streamlit as st
@@ -19,9 +21,10 @@ from groq import Groq
 
 APP_TITLE = "CyberLaw Pakistan AI"
 
+PDF_FILE_ID = "1d7xD2E1HrZBpkv16yHcqTb75C0MOzdmx"
+
 PDF_URL = (
-    "https://drive.google.com/uc?export=download"
-    "&id=1d7xD2E1HrZBpkv16yHcqTb75C0MOzdmx"
+    f"https://drive.google.com/uc?export=download&id={PDF_FILE_ID}"
 )
 
 DATA_DIR = Path(".cyberlaw_data")
@@ -41,7 +44,7 @@ DEFAULT_MODEL = os.getenv(
 
 
 # =========================================================
-# PAGE
+# PAGE CONFIG
 # =========================================================
 
 st.set_page_config(
@@ -67,7 +70,7 @@ if "page" not in st.session_state:
 
 
 # =========================================================
-# THEME CSS
+# THEME
 # =========================================================
 
 def apply_theme(theme):
@@ -100,10 +103,6 @@ def apply_theme(theme):
         f"""
         <style>
 
-        /* =================================================
-           GLOBAL
-           ================================================= */
-
         .stApp {{
             background: {bg};
         }}
@@ -112,18 +111,12 @@ def apply_theme(theme):
             color: {text};
         }}
 
-        /* =================================================
-           REMOVE EXTRA STREAMLIT TOP SPACE
-           ================================================= */
-
         .block-container {{
             padding-top: 2rem;
             padding-bottom: 2rem;
         }}
 
-        /* =================================================
-           HERO
-           ================================================= */
+        /* HERO */
 
         .hero {{
             background: {card};
@@ -156,9 +149,7 @@ def apply_theme(theme):
             max-width: 850px;
         }}
 
-        /* =================================================
-           BADGES
-           ================================================= */
+        /* BADGES */
 
         .badge-container {{
             margin-top: 20px;
@@ -177,9 +168,7 @@ def apply_theme(theme):
             margin-bottom: 5px;
         }}
 
-        /* =================================================
-           FEATURE CARDS
-           ================================================= */
+        /* FEATURE CARDS */
 
         .feature-card {{
             background: {card};
@@ -215,9 +204,7 @@ def apply_theme(theme):
             margin-top: 6px;
         }}
 
-        /* =================================================
-           GENERAL CARDS
-           ================================================= */
+        /* CARDS */
 
         .custom-card {{
             background: {card};
@@ -234,9 +221,7 @@ def apply_theme(theme):
             color: {text} !important;
         }}
 
-        /* =================================================
-           SIDEBAR
-           ================================================= */
+        /* SIDEBAR */
 
         section[data-testid="stSidebar"] {{
             background: {card};
@@ -247,9 +232,7 @@ def apply_theme(theme):
             color: {text};
         }}
 
-        /* =================================================
-           CHAT
-           ================================================= */
+        /* CHAT */
 
         .user-message {{
             background: linear-gradient(
@@ -284,13 +267,7 @@ def apply_theme(theme):
             color: {accent} !important;
         }}
 
-        .assistant-message * {{
-            color: inherit;
-        }}
-
-        /* =================================================
-           SOURCES
-           ================================================= */
+        /* SOURCES */
 
         .source-card {{
             background: {card2};
@@ -319,9 +296,7 @@ def apply_theme(theme):
             margin-top: 10px;
         }}
 
-        /* =================================================
-           COMPLAINT
-           ================================================= */
+        /* COMPLAINT */
 
         .complaint-header {{
             background:
@@ -350,9 +325,7 @@ def apply_theme(theme):
             margin-top: 8px;
         }}
 
-        /* =================================================
-           INPUTS
-           ================================================= */
+        /* INPUTS */
 
         .stTextInput input,
         .stTextArea textarea {{
@@ -374,9 +347,7 @@ def apply_theme(theme):
             opacity: 0.8;
         }}
 
-        /* =================================================
-           BUTTONS
-           ================================================= */
+        /* BUTTONS */
 
         .stButton > button {{
             border-radius: 12px;
@@ -390,18 +361,14 @@ def apply_theme(theme):
             transform: translateY(-1px);
         }}
 
-        /* =================================================
-           SELECTBOX / SLIDER
-           ================================================= */
+        /* SELECTBOX */
 
         div[data-baseweb="select"] > div {{
             background: {input_bg};
             border-color: {border};
         }}
 
-        /* =================================================
-           FOOTER
-           ================================================= */
+        /* FOOTER */
 
         .footer {{
             text-align: center;
@@ -410,9 +377,7 @@ def apply_theme(theme):
             font-size: 12px;
         }}
 
-        /* =================================================
-           ANIMATIONS
-           ================================================= */
+        /* ANIMATIONS */
 
         @keyframes slideUp {{
             from {{
@@ -472,12 +437,13 @@ apply_theme(st.session_state.theme)
 
 
 # =========================================================
-# GROQ API KEY
+# GROQ KEY
 # =========================================================
 
 def get_groq_key():
 
     try:
+
         key = st.secrets.get("GROQ_API_KEY")
 
         if key:
@@ -490,46 +456,141 @@ def get_groq_key():
 
 
 # =========================================================
-# DOWNLOAD PDF
+# DOWNLOAD PDF FROM GOOGLE DRIVE
 # =========================================================
 
 def download_pdf():
 
+    # Check cached PDF first
     if PDF_FILE.exists():
 
-        if PDF_FILE.stat().st_size > 1000:
+        try:
 
-            try:
+            if PDF_FILE.stat().st_size > 1000:
+
                 with open(PDF_FILE, "rb") as file:
+
                     if file.read(5) == b"%PDF-":
                         return True
-            except Exception:
-                pass
+
+        except Exception:
+            pass
 
     try:
 
-        urllib.request.urlretrieve(
+        session = requests.Session()
+
+        response = session.get(
             PDF_URL,
-            PDF_FILE
+            timeout=60,
+            allow_redirects=True
         )
 
-        with open(PDF_FILE, "rb") as file:
-            header = file.read(5)
+        response.raise_for_status()
 
-        if header != b"%PDF-":
+        content = response.content
 
-            PDF_FILE.unlink(
-                missing_ok=True
+        # Direct PDF
+        if content[:5] == b"%PDF-":
+
+            PDF_FILE.write_bytes(content)
+
+            return True
+
+        # Google Drive confirmation page
+        html_content = content.decode(
+            "utf-8",
+            errors="ignore"
+        )
+
+        confirm_url = None
+
+        patterns = [
+            r'href="(/uc\?export=download[^"]+)"',
+            r'href="(https://drive\.usercontent\.google\.com/download[^"]+)"',
+            r'"downloadUrl":"([^"]+)"'
+        ]
+
+        for pattern in patterns:
+
+            match = re.search(
+                pattern,
+                html_content
             )
 
-            return False
+            if match:
 
-        return True
+                confirm_url = match.group(1)
 
-    except Exception:
+                confirm_url = (
+                    confirm_url
+                    .replace("&amp;", "&")
+                    .replace("\\u003d", "=")
+                    .replace("\\u0026", "&")
+                )
+
+                if confirm_url.startswith("/"):
+                    confirm_url = (
+                        "https://drive.google.com"
+                        + confirm_url
+                    )
+
+                break
+
+        if confirm_url:
+
+            response = session.get(
+                confirm_url,
+                timeout=60,
+                allow_redirects=True
+            )
+
+            response.raise_for_status()
+
+            content = response.content
+
+            if content[:5] == b"%PDF-":
+
+                PDF_FILE.write_bytes(content)
+
+                return True
+
+        # Last fallback: try Drive alt=media endpoint
+        fallback_url = (
+            f"https://drive.google.com/uc"
+            f"?export=download&id={PDF_FILE_ID}"
+        )
+
+        response = session.get(
+            fallback_url,
+            timeout=60,
+            allow_redirects=True
+        )
+
+        response.raise_for_status()
+
+        content = response.content
+
+        if content[:5] == b"%PDF-":
+
+            PDF_FILE.write_bytes(content)
+
+            return True
 
         PDF_FILE.unlink(
             missing_ok=True
+        )
+
+        return False
+
+    except Exception as error:
+
+        PDF_FILE.unlink(
+            missing_ok=True
+        )
+
+        st.error(
+            f"PDF download error: {error}"
         )
 
         return False
@@ -541,7 +602,10 @@ def download_pdf():
 
 def clean_text(text):
 
-    text = text.replace("\x00", " ")
+    text = text.replace(
+        "\x00",
+        " "
+    )
 
     text = re.sub(
         r"\s+",
@@ -570,8 +634,11 @@ def extract_pdf():
     ):
 
         try:
+
             text = page.extract_text() or ""
+
         except Exception:
+
             text = ""
 
         text = clean_text(text)
@@ -589,13 +656,13 @@ def extract_pdf():
 
 
 # =========================================================
-# CHUNK PDF
+# CREATE LEGAL CHUNKS
 # =========================================================
 
 def create_chunks(
     pages,
-    chunk_size=900,
-    overlap=150
+    chunk_size=1000,
+    overlap=180
 ):
 
     chunks = []
@@ -611,18 +678,23 @@ def create_chunks(
 
             end = start + chunk_size
 
-            chunk = text[start:end]
+            chunk = text[start:end].strip()
 
-            if len(chunk.strip()) > 80:
+            if len(chunk) > 80:
 
                 chunks.append(
                     {
-                        "text": chunk.strip(),
+                        "text": chunk,
                         "page": page
                     }
                 )
 
-            start += chunk_size - overlap
+            next_start = end - overlap
+
+            if next_start <= start:
+                break
+
+            start = next_start
 
     return chunks
 
@@ -640,7 +712,7 @@ def load_embedding_model():
 
 
 # =========================================================
-# FILE HASH
+# HASH
 # =========================================================
 
 def calculate_hash():
@@ -698,12 +770,20 @@ def build_database(force=False):
                     allow_pickle=True
                 ).tolist()
 
-                return index, chunks
+                if index.ntotal == len(chunks):
+
+                    return index, chunks
 
         except Exception:
             pass
 
     pages = extract_pdf()
+
+    if not pages:
+
+        raise ValueError(
+            "No readable text was found in the PDF."
+        )
 
     chunks = create_chunks(
         pages
@@ -712,7 +792,7 @@ def build_database(force=False):
     if not chunks:
 
         raise ValueError(
-            "No readable text was found in the PDF."
+            "Unable to create text chunks."
         )
 
     model = load_embedding_model()
@@ -813,7 +893,7 @@ def retrieve(
 
 
 # =========================================================
-# CREATE CONTEXT
+# CONTEXT
 # =========================================================
 
 def create_context(results):
@@ -850,7 +930,7 @@ def create_system_prompt(
 You are CyberLaw Pakistan AI.
 
 You are a legal-information RAG assistant focused
-on Pakistani cyber law.
+on Pakistani cyber-law information.
 
 USER PREFERENCES
 ----------------
@@ -859,42 +939,57 @@ Response size: {response_size}
 Language: {language}
 Answer style: {answer_style}
 
+CORE RULE
+---------
+Use the retrieved legal document as your primary
+knowledge source.
+
+Do not treat your general model knowledge as evidence
+for a specific Pakistani legal claim.
+
 LEGAL ACCURACY
 --------------
-1. Use the retrieved document as the primary source.
+1. Never invent:
 
-2. Never invent:
-   - sections
-   - laws
-   - penalties
-   - authorities
-   - procedures
-   - legal claims
+- sections
+- subsections
+- laws
+- penalties
+- authorities
+- procedures
+- legal claims
 
-3. Mention section numbers only when supported
-   by retrieved evidence.
+2. Mention section numbers only when supported by
+the retrieved evidence.
 
-4. If the evidence is insufficient, clearly say:
-   "The available source does not provide enough
-   information to answer this confidently."
+3. If the evidence is insufficient, explicitly say:
 
-5. Separate:
-   - Legal provision
-   - Explanation
-   - Practical implication
+"The available source does not provide enough
+information to answer this confidently."
 
-6. Cite important claims using:
-   [Source X, Page Y]
+4. Separate your answer into appropriate parts such as:
 
-7. Do not present the AI response as an official
-   legal opinion.
+- Legal provision
+- Explanation
+- Practical implication
 
-8. Recommend verification with a qualified lawyer
-   or relevant official authority when appropriate.
+5. Cite important claims using:
+
+[Source X, Page Y]
+
+6. Do not present the response as an official legal
+opinion.
+
+7. Recommend verification with a qualified lawyer
+or relevant official authority when appropriate.
+
+8. Do not claim that a law is currently in force unless
+the retrieved material supports that conclusion.
 
 CYBER SAFETY
 ------------
 Do not provide operational instructions for:
+
 - hacking
 - credential theft
 - malware
@@ -903,25 +998,36 @@ Do not provide operational instructions for:
 - bypassing security
 - evading law enforcement
 
-For harmful requests, refuse the operational
-instructions and provide lawful defensive/legal
-information instead.
+For harmful requests:
+
+- refuse the operational instructions
+- provide lawful defensive information
+- provide relevant legal information when supported
 
 COMPLAINTS
 ----------
-If the user asks for a cybercrime complaint draft:
+If the user requests a cybercrime complaint draft:
 
-- Create a professional structured draft.
-- Use only facts supplied by the user.
-- Use only legal provisions supported by evidence.
-- Never fabricate facts or section numbers.
-- Clearly label it:
+Create a professional structured draft.
 
-"AI-generated complaint draft — verify before submission."
+Use ONLY facts supplied by the user.
 
-The draft can contain:
+Use ONLY legal provisions supported by retrieved evidence.
+
+Never fabricate facts.
+
+Never fabricate section numbers.
+
+Never fabricate authorities.
+
+Start with:
+
+AI-generated complaint draft — verify before submission.
+
+Include where appropriate:
+
 - Subject
-- Complainant information
+- Complainant statement
 - Incident details
 - Platform
 - Date/time
@@ -929,10 +1035,43 @@ The draft can contain:
 - Relevant legal provision
 - Requested action
 - Declaration
+- Missing information
 
-Do not claim that the generated complaint has
-already been submitted to an authority.
+Never claim that the complaint has already been
+submitted to an authority.
+
+LANGUAGE
+--------
+Answer in the requested language.
+
+If Urdu or Roman Urdu is selected, do not unnecessarily
+switch to English.
+
+RESPONSE STYLE
+--------------
+Follow the requested response size and answer style.
+
+Be clear, accurate, and structured.
 """
+
+
+# =========================================================
+# MAX TOKENS
+# =========================================================
+
+def get_max_tokens(response_size):
+
+    mapping = {
+        "Short": 800,
+        "Medium": 1400,
+        "Detailed": 2200,
+        "Very detailed": 3200
+    }
+
+    return mapping.get(
+        response_size,
+        1400
+    )
 
 
 # =========================================================
@@ -979,16 +1118,25 @@ USER QUESTION
 
 {question}
 
-Answer using the retrieved evidence.
+INSTRUCTIONS
+============
 
-Cite important legal claims.
+Answer the user's question using the retrieved
+legal evidence.
+
+Cite important claims.
+
 Do not invent unsupported information.
+
+If the evidence is insufficient, say so clearly.
 """
 
     response = client.chat.completions.create(
         model=model_name,
         temperature=0.1,
-        max_tokens=2500,
+        max_tokens=get_max_tokens(
+            response_size
+        ),
         messages=[
             {
                 "role": "system",
@@ -1062,7 +1210,10 @@ with st.sidebar:
 
     selected_theme = st.radio(
         "Theme",
-        ["Dark", "Light"],
+        [
+            "Dark",
+            "Light"
+        ],
         index=(
             0
             if st.session_state.theme == "Dark"
@@ -1152,13 +1303,14 @@ with st.sidebar:
             META_FILE
         ]:
 
-            if file.exists():
-                file.unlink()
+            file.unlink(
+                missing_ok=True
+            )
 
         st.cache_resource.clear()
 
         st.success(
-            "Knowledge base will be rebuilt."
+            "Knowledge base rebuilt on next load."
         )
 
         st.rerun()
@@ -1174,7 +1326,7 @@ with st.sidebar:
 
 
 # =========================================================
-# DATABASE
+# PDF + DATABASE
 # =========================================================
 
 if not download_pdf():
@@ -1183,12 +1335,20 @@ if not download_pdf():
         """
         ### PDF download failed
 
-        Make sure the Google Drive PDF is shared as:
+        Make sure the Google Drive file is configured as:
 
         **Anyone with the link → Viewer**
 
-        The application cannot build the knowledge
-        base until the PDF is accessible.
+        The application cannot create the RAG knowledge
+        base until the PDF is publicly accessible.
+        """
+    )
+
+    st.info(
+        f"""
+        Google Drive file ID:
+
+        `{PDF_FILE_ID}`
         """
     )
 
@@ -1225,14 +1385,19 @@ if st.session_state.page == "AI Assistant":
             <div class="hero-subtitle">
                 Ask questions about Pakistani cyber law,
                 retrieve relevant legal provisions, and
-                understand them in simple language.
+                understand them using source-based AI.
             </div>
 
             <div class="badge-container">
+
                 <span class="badge">RAG Powered</span>
+
                 <span class="badge">Pakistan Law</span>
+
                 <span class="badge">Groq AI</span>
+
                 <span class="badge">Source Based</span>
+
             </div>
 
         </div>
@@ -1260,7 +1425,7 @@ if st.session_state.page == "AI Assistant":
 
                 <div class="feature-text">
                     Understand Pakistani cyber-law
-                    provisions using your legal source.
+                    information using the indexed source.
                 </div>
 
             </div>
@@ -1325,8 +1490,8 @@ if st.session_state.page == "AI Assistant":
                 </div>
 
                 <div class="feature-text">
-                    Turn cyber incident details
-                    into a structured complaint draft.
+                    Generate a structured
+                    AI-assisted complaint draft.
                 </div>
 
             </div>
@@ -1344,12 +1509,20 @@ if st.session_state.page == "AI Assistant":
 
         if message["role"] == "user":
 
-            safe_content = message["content"]
+            safe_content = html.escape(
+                message["content"]
+            )
+
+            safe_content = safe_content.replace(
+                "\n",
+                "<br>"
+            )
 
             st.markdown(
                 f"""
                 <div class="user-message">
-                    <strong>You</strong><br><br>
+                    <strong>You</strong>
+                    <br><br>
                     {safe_content}
                 </div>
                 """,
@@ -1359,13 +1532,20 @@ if st.session_state.page == "AI Assistant":
         else:
 
             st.markdown(
-                f"""
-                <div class="assistant-message">
-                    <strong>⚖️ CyberLaw AI</strong>
-                    <br><br>
-                    {message["content"]}
-                </div>
-                """,
+                '<div class="assistant-message">',
+                unsafe_allow_html=True
+            )
+
+            st.markdown(
+                "**⚖️ CyberLaw AI**"
+            )
+
+            st.markdown(
+                message["content"]
+            )
+
+            st.markdown(
+                "</div>",
                 unsafe_allow_html=True
             )
 
@@ -1398,7 +1578,7 @@ if st.session_state.page == "AI Assistant":
                                 </div>
 
                                 <div class="source-text">
-                                    {source["text"]}
+                                    {html.escape(source["text"])}
                                 </div>
 
                             </div>
@@ -1463,8 +1643,9 @@ if st.session_state.page == "AI Assistant":
                 st.session_state.messages.append(
                     {
                         "role": "assistant",
-                        "content":
-                            f"⚠️ Error: {error}",
+                        "content": (
+                            f"⚠️ Error: {error}"
+                        ),
                         "sources": []
                     }
                 )
@@ -1489,14 +1670,18 @@ elif st.session_state.page == "File a Complaint":
             <div class="complaint-subtitle">
                 Describe your cyber incident and generate
                 an AI-assisted structured complaint draft.
-                Verify the information before official
+                Verify all information before official
                 submission.
             </div>
 
             <div class="badge-container">
+
                 <span class="badge">AI Draft</span>
+
                 <span class="badge">Evidence Based</span>
+
                 <span class="badge">Pakistan</span>
+
             </div>
 
         </div>
@@ -1626,7 +1811,7 @@ Requirements:
 AI-generated complaint draft — verify before submission.
 
 2. Identify potentially relevant Pakistani cyber-law
-provisions ONLY when supported by the retrieved evidence.
+provisions ONLY when supported by retrieved evidence.
 
 3. Do not invent section numbers.
 
@@ -1642,7 +1827,7 @@ provisions ONLY when supported by the retrieved evidence.
 - Complainant statement
 - Incident details
 - Platform
-- Date
+- Date/time
 - Evidence
 - Relevant legal provision
 - Requested action
@@ -1650,6 +1835,9 @@ provisions ONLY when supported by the retrieved evidence.
 
 8. Identify information that still needs to be
 filled in by the complainant.
+
+9. If the retrieved evidence is insufficient to identify
+a legal provision, explicitly state that.
 """
 
             with st.spinner(
@@ -1827,6 +2015,7 @@ elif st.session_state.page == "About":
         - **Sentence Transformers**
         - **Groq**
         - **PyPDF**
+        - **Requests**
         - **Retrieval-Augmented Generation**
         """
     )
@@ -1870,3 +2059,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+```
