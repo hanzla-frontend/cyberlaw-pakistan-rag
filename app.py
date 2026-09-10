@@ -1,6 +1,5 @@
 import os
 import re
-import html
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -14,7 +13,7 @@ from groq import Groq
 
 
 # ============================================================
-# CONFIGURATION
+# PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
@@ -24,95 +23,585 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-APP_NAME = "CyberLaw Pakistan AI"
 
-# Your Google Drive PDF
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
 GOOGLE_DRIVE_URL = (
     "https://drive.google.com/file/d/"
     "1d7xD2E1HrZBpkv16yHcqTb75C0MOzdmx/view?usp=sharing"
 )
 
 DATA_DIR = ".cyberlaw_data"
-PDF_FILE = os.path.join(DATA_DIR, "pakistan_cyber_law.pdf")
-INDEX_FILE = os.path.join(DATA_DIR, "cyberlaw.index")
-CHUNKS_FILE = os.path.join(DATA_DIR, "chunks.npy")
-METADATA_FILE = os.path.join(DATA_DIR, "metadata.npy")
+PDF_PATH = os.path.join(DATA_DIR, "cyber_law_source.pdf")
+INDEX_PATH = os.path.join(DATA_DIR, "cyberlaw.index")
+CHUNKS_PATH = os.path.join(DATA_DIR, "chunks.npy")
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
+
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+
+MODEL_OPTIONS = [
+    "openai/gpt-oss-120b",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+]
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
 # ============================================================
-# STYLING
+# SESSION STATE
 # ============================================================
 
-st.markdown(
+defaults = {
+    "theme": "Dark",
+    "accent_color": "#FF7A00",
+    "background_color": "#0B0F14",
+    "messages": [],
+    "total_prompts": 0,
+    "total_messages": 0,
+    "total_tokens": 0,
+    "selected_model": DEFAULT_MODEL,
+    "knowledge_ready": False,
+    "chunks": [],
+    "index": None,
+}
+
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+
+# ============================================================
+# THEME COLORS
+# ============================================================
+
+def get_theme_colors():
     """
-    <style>
-    .main-title {
-        font-size: 42px;
-        font-weight: 800;
-        margin-bottom: 5px;
+    Returns a complete color system for Light/Dark mode.
+    """
+
+    if st.session_state.theme == "Dark":
+        return {
+            "bg": st.session_state.background_color,
+            "surface": "#151A21",
+            "surface_2": "#1C232D",
+            "input": "#11161D",
+            "border": "#303945",
+            "text": "#F5F7FA",
+            "secondary": "#B7C0CC",
+            "placeholder": "#7F8A98",
+            "accent": st.session_state.accent_color,
+            "accent_hover": "#FF963D",
+            "code": "#0D1117",
+            "sidebar": "#10151C",
+            "chat_user": "#1B2530",
+            "chat_assistant": "#151A21",
+            "success_bg": "#10261B",
+            "warning_bg": "#2A2110",
+            "error_bg": "#2A1515",
+        }
+
+    return {
+        "bg": st.session_state.background_color,
+        "surface": "#FFFFFF",
+        "surface_2": "#F4F6F8",
+        "input": "#FFFFFF",
+        "border": "#D8DEE6",
+        "text": "#111827",
+        "secondary": "#4B5563",
+        "placeholder": "#6B7280",
+        "accent": st.session_state.accent_color,
+        "accent_hover": "#E86F00",
+        "code": "#F3F4F6",
+        "sidebar": "#F8FAFC",
+        "chat_user": "#F0F4F8",
+        "chat_assistant": "#FFFFFF",
+        "success_bg": "#ECFDF3",
+        "warning_bg": "#FFFBEB",
+        "error_bg": "#FEF2F2",
     }
 
-    .subtitle {
-        font-size: 17px;
-        opacity: 0.75;
-        margin-bottom: 25px;
-    }
 
-    .info-box {
-        padding: 18px;
-        border-radius: 12px;
-        border: 1px solid rgba(128,128,128,0.25);
-        margin-bottom: 15px;
-    }
+COLORS = get_theme_colors()
 
-    .source-box {
-        padding: 12px;
-        border-radius: 10px;
-        border-left: 4px solid #888;
-        margin-top: 8px;
-        font-size: 14px;
-    }
 
-    .warning-box {
-        padding: 15px;
-        border-radius: 10px;
-        background: rgba(255, 193, 7, 0.10);
-        border: 1px solid rgba(255, 193, 7, 0.35);
-    }
+# ============================================================
+# CUSTOM CSS
+# ============================================================
 
-    .success-box {
-        padding: 15px;
-        border-radius: 10px;
-        background: rgba(40, 167, 69, 0.10);
-        border: 1px solid rgba(40, 167, 69, 0.35);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+def apply_theme():
+
+    c = COLORS
+
+    st.markdown(
+        f"""
+        <style>
+
+        /* ==================================================
+           GLOBAL
+           ================================================== */
+
+        html,
+        body,
+        [data-testid="stAppViewContainer"],
+        [data-testid="stApp"],
+        .stApp {{
+            background: {c["bg"]} !important;
+            color: {c["text"]} !important;
+        }}
+
+        [data-testid="stAppViewContainer"] {{
+            background: {c["bg"]} !important;
+        }}
+
+        .main {{
+            background: {c["bg"]} !important;
+        }}
+
+        .block-container {{
+            padding-top: 2rem;
+            padding-bottom: 3rem;
+            max-width: 1400px;
+        }}
+
+        /* ==================================================
+           ALL TEXT
+           ================================================== */
+
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6,
+        p,
+        span,
+        label,
+        div {{
+            color: {c["text"]};
+        }}
+
+        .stMarkdown,
+        .stCaption,
+        .stText,
+        [data-testid="stMarkdownContainer"] {{
+            color: {c["text"]} !important;
+        }}
+
+        .stCaption {{
+            color: {c["secondary"]} !important;
+        }}
+
+        /* ==================================================
+           SIDEBAR
+           ================================================== */
+
+        section[data-testid="stSidebar"] {{
+            background: {c["sidebar"]} !important;
+            border-right: 1px solid {c["border"]} !important;
+        }}
+
+        section[data-testid="stSidebar"] > div {{
+            background: {c["sidebar"]} !important;
+        }}
+
+        section[data-testid="stSidebar"] * {{
+            color: {c["text"]} !important;
+        }}
+
+        /* ==================================================
+           HEADER
+           ================================================== */
+
+        .app-title {{
+            font-size: 2.7rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 0.2rem;
+        }}
+
+        .app-subtitle {{
+            font-size: 1.05rem;
+            color: {c["secondary"]} !important;
+            margin-bottom: 1.5rem;
+        }}
+
+        .accent-line {{
+            height: 4px;
+            width: 90px;
+            background: {c["accent"]};
+            border-radius: 20px;
+            margin: 8px 0 20px 0;
+        }}
+
+        /* ==================================================
+           CARDS
+           ================================================== */
+
+        .custom-card {{
+            background: {c["surface"]};
+            border: 1px solid {c["border"]};
+            border-radius: 18px;
+            padding: 22px;
+            margin-bottom: 18px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }}
+
+        .custom-card h3 {{
+            margin-top: 0;
+        }}
+
+        .stat-card {{
+            background: {c["surface"]};
+            border: 1px solid {c["border"]};
+            border-radius: 16px;
+            padding: 18px;
+            text-align: center;
+        }}
+
+        .stat-number {{
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: {c["accent"]} !important;
+        }}
+
+        .stat-label {{
+            color: {c["secondary"]} !important;
+            font-size: 0.85rem;
+        }}
+
+        /* ==================================================
+           TEXT INPUT
+           ================================================== */
+
+        div[data-testid="stTextInput"] input {{
+            background: {c["input"]} !important;
+            color: {c["text"]} !important;
+            border: 1px solid {c["border"]} !important;
+            border-radius: 10px !important;
+        }}
+
+        div[data-testid="stTextInput"] input:focus {{
+            border-color: {c["accent"]} !important;
+            box-shadow: 0 0 0 1px {c["accent"]} !important;
+        }}
+
+        div[data-testid="stTextInput"] input::placeholder {{
+            color: {c["placeholder"]} !important;
+            opacity: 1 !important;
+        }}
+
+        /* ==================================================
+           TEXT AREA
+           ================================================== */
+
+        div[data-testid="stTextArea"] textarea {{
+            background: {c["input"]} !important;
+            color: {c["text"]} !important;
+            border: 1px solid {c["border"]} !important;
+            border-radius: 12px !important;
+        }}
+
+        div[data-testid="stTextArea"] textarea:focus {{
+            border-color: {c["accent"]} !important;
+            box-shadow: 0 0 0 1px {c["accent"]} !important;
+        }}
+
+        div[data-testid="stTextArea"] textarea::placeholder {{
+            color: {c["placeholder"]} !important;
+            opacity: 1 !important;
+        }}
+
+        /* ==================================================
+           SELECTBOX / DROPDOWN
+           ================================================== */
+
+        div[data-baseweb="select"] > div {{
+            background: {c["input"]} !important;
+            color: {c["text"]} !important;
+            border-color: {c["border"]} !important;
+            border-radius: 10px !important;
+        }}
+
+        div[data-baseweb="select"] span {{
+            color: {c["text"]} !important;
+        }}
+
+        div[data-baseweb="select"] svg {{
+            fill: {c["text"]} !important;
+        }}
+
+        [role="listbox"] {{
+            background: {c["surface"]} !important;
+            border: 1px solid {c["border"]} !important;
+        }}
+
+        [role="option"] {{
+            background: {c["surface"]} !important;
+            color: {c["text"]} !important;
+        }}
+
+        [role="option"]:hover {{
+            background: {c["surface_2"]} !important;
+        }}
+
+        /* ==================================================
+           CHAT INPUT
+           ================================================== */
+
+        div[data-testid="stChatInput"] {{
+            background: transparent !important;
+        }}
+
+        div[data-testid="stChatInput"] textarea {{
+            background: {c["input"]} !important;
+            color: {c["text"]} !important;
+            border: 1px solid {c["border"]} !important;
+            border-radius: 14px !important;
+        }}
+
+        div[data-testid="stChatInput"] textarea::placeholder {{
+            color: {c["placeholder"]} !important;
+        }}
+
+        div[data-testid="stChatInput"] textarea:focus {{
+            border-color: {c["accent"]} !important;
+            box-shadow: 0 0 0 1px {c["accent"]} !important;
+        }}
+
+        /* ==================================================
+           BUTTONS
+           ================================================== */
+
+        .stButton > button {{
+            background: {c["surface"]} !important;
+            color: {c["text"]} !important;
+            border: 1px solid {c["border"]} !important;
+            border-radius: 10px !important;
+            font-weight: 600 !important;
+            min-height: 42px;
+            transition: all 0.2s ease;
+        }}
+
+        .stButton > button:hover {{
+            border-color: {c["accent"]} !important;
+            color: {c["accent"]} !important;
+        }}
+
+        .stButton > button[kind="primary"] {{
+            background: {c["accent"]} !important;
+            color: #FFFFFF !important;
+            border: none !important;
+        }}
+
+        .stButton > button[kind="primary"]:hover {{
+            background: {c["accent_hover"]} !important;
+            color: #FFFFFF !important;
+        }}
+
+        .stDownloadButton > button {{
+            background: {c["accent"]} !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            border-radius: 10px !important;
+            font-weight: 700 !important;
+        }}
+
+        .stDownloadButton > button:hover {{
+            background: {c["accent_hover"]} !important;
+        }}
+
+        /* ==================================================
+           RADIO / CHECKBOX
+           ================================================== */
+
+        div[data-testid="stRadio"] label,
+        div[data-testid="stCheckbox"] label {{
+            color: {c["text"]} !important;
+        }}
+
+        div[data-testid="stRadio"] p,
+        div[data-testid="stCheckbox"] p {{
+            color: {c["text"]} !important;
+        }}
+
+        /* ==================================================
+           SLIDER
+           ================================================== */
+
+        div[data-testid="stSlider"] {{
+            color: {c["text"]} !important;
+        }}
+
+        div[data-testid="stSlider"] label {{
+            color: {c["text"]} !important;
+        }}
+
+        /* ==================================================
+           COLOR PICKER
+           ================================================== */
+
+        div[data-testid="stColorPicker"] label {{
+            color: {c["text"]} !important;
+        }}
+
+        /* ==================================================
+           METRICS
+           ================================================== */
+
+        div[data-testid="stMetric"] {{
+            background: {c["surface"]} !important;
+            border: 1px solid {c["border"]} !important;
+            border-radius: 14px !important;
+            padding: 12px !important;
+        }}
+
+        div[data-testid="stMetricLabel"] {{
+            color: {c["secondary"]} !important;
+        }}
+
+        div[data-testid="stMetricValue"] {{
+            color: {c["text"]} !important;
+        }}
+
+        /* ==================================================
+           CHAT MESSAGES
+           ================================================== */
+
+        [data-testid="stChatMessage"] {{
+            background: {c["chat_assistant"]} !important;
+            border: 1px solid {c["border"]} !important;
+            border-radius: 16px !important;
+            margin-bottom: 12px !important;
+        }}
+
+        [data-testid="stChatMessage"] p,
+        [data-testid="stChatMessage"] li,
+        [data-testid="stChatMessage"] span {{
+            color: {c["text"]} !important;
+        }}
+
+        /* ==================================================
+           EXPANDERS
+           ================================================== */
+
+        [data-testid="stExpander"] {{
+            background: {c["surface"]} !important;
+            border: 1px solid {c["border"]} !important;
+            border-radius: 12px !important;
+        }}
+
+        [data-testid="stExpander"] summary {{
+            color: {c["text"]} !important;
+        }}
+
+        /* ==================================================
+           ALERTS
+           ================================================== */
+
+        [data-testid="stAlert"] {{
+            border-radius: 12px !important;
+        }}
+
+        /* ==================================================
+           CODE
+           ================================================== */
+
+        code {{
+            background: {c["code"]} !important;
+            color: {c["text"]} !important;
+        }}
+
+        pre {{
+            background: {c["code"]} !important;
+            border: 1px solid {c["border"]} !important;
+            border-radius: 12px !important;
+        }}
+
+        /* ==================================================
+           FILE UPLOADER
+           ================================================== */
+
+        [data-testid="stFileUploader"] {{
+            background: {c["surface"]} !important;
+            border: 1px solid {c["border"]} !important;
+            border-radius: 12px !important;
+        }}
+
+        [data-testid="stFileUploader"] section {{
+            background: {c["surface"]} !important;
+        }}
+
+        /* ==================================================
+           TOGGLE SWITCH
+           ================================================== */
+
+        .theme-toggle-container {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: {c["surface"]};
+            border: 1px solid {c["border"]};
+            border-radius: 14px;
+            padding: 10px 12px;
+            margin: 6px 0 18px 0;
+        }}
+
+        .theme-toggle-title {{
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            font-weight: 700;
+            color: {c["text"]} !important;
+        }}
+
+        .theme-icon {{
+            font-size: 20px;
+        }}
+
+        /* ==================================================
+           DIVIDER
+           ================================================== */
+
+        hr {{
+            border-color: {c["border"]} !important;
+        }}
+
+        /* ==================================================
+           FOOTER
+           ================================================== */
+
+        .footer {{
+            text-align: center;
+            color: {c["secondary"]} !important;
+            font-size: 0.82rem;
+            padding: 25px 0 5px 0;
+        }}
+
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+apply_theme()
 
 
 # ============================================================
 # GOOGLE DRIVE FUNCTIONS
 # ============================================================
 
-def extract_google_drive_file_id(url):
+def extract_drive_file_id(url):
     """
-    Extract a Google Drive file ID from common Drive URL formats.
+    Extract Google Drive file ID from common sharing URL formats.
     """
-
-    if not url:
-        return None
 
     patterns = [
         r"/file/d/([a-zA-Z0-9_-]+)",
         r"[?&]id=([a-zA-Z0-9_-]+)",
-        r"/open\?id=([a-zA-Z0-9_-]+)",
     ]
 
     for pattern in patterns:
@@ -120,145 +609,52 @@ def extract_google_drive_file_id(url):
         if match:
             return match.group(1)
 
-    # If user directly provides the ID
-    if re.fullmatch(r"[a-zA-Z0-9_-]{20,}", url.strip()):
-        return url.strip()
-
     return None
 
 
-def build_google_drive_download_url(file_id):
-    return (
-        "https://drive.google.com/uc?"
-        + urllib.parse.urlencode(
-            {
-                "export": "download",
-                "id": file_id,
-            }
-        )
-    )
-
-
-def download_google_drive_pdf(url, destination):
+def download_google_drive_file(url, destination):
     """
-    Download a publicly shared Google Drive PDF.
-
-    Handles:
-    - /file/d/.../view URLs
-    - uc?export=download URLs
-    - Google Drive confirmation pages
+    Download a Google Drive file using its file ID.
     """
 
-    file_id = extract_google_drive_file_id(url)
+    file_id = extract_drive_file_id(url)
 
     if not file_id:
-        raise ValueError(
-            "Could not extract the Google Drive file ID from the provided URL."
-        )
+        raise ValueError("Could not extract Google Drive file ID.")
 
-    download_url = build_google_drive_download_url(file_id)
+    download_url = (
+        "https://drive.usercontent.google.com/download"
+        f"?id={urllib.parse.quote(file_id)}&export=download&confirm=t"
+    )
 
-    opener = urllib.request.build_opener()
-    opener.addheaders = [
-        (
-            "User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 Chrome/131 Safari/537.36",
-        )
-    ]
+    request = urllib.request.Request(
+        download_url,
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        },
+    )
 
     try:
-        response = opener.open(download_url, timeout=60)
-        content = response.read()
+        with urllib.request.urlopen(request, timeout=60) as response:
+            data = response.read()
 
-        content_type = response.headers.get("Content-Type", "").lower()
+        if not data:
+            raise ValueError("Google Drive returned an empty file.")
 
-        # A real PDF normally starts with %PDF-
-        if content.startswith(b"%PDF-") or "application/pdf" in content_type:
-            with open(destination, "wb") as file:
-                file.write(content)
+        with open(destination, "wb") as f:
+            f.write(data)
 
-            return destination
+        return destination
 
-        # Google Drive may return an HTML confirmation page.
-        text = content.decode("utf-8", errors="ignore")
-
-        token_match = re.search(
-            r'name="confirm"\s+value="([^"]+)"',
-            text,
-            re.IGNORECASE,
-        )
-
-        if not token_match:
-            token_match = re.search(
-                r"confirm=([0-9A-Za-z_-]+)",
-                text,
-                re.IGNORECASE,
-            )
-
-        if token_match:
-            confirm_token = token_match.group(1)
-
-            confirm_url = (
-                "https://drive.usercontent.google.com/download?"
-                + urllib.parse.urlencode(
-                    {
-                        "id": file_id,
-                        "export": "download",
-                        "confirm": confirm_token,
-                    }
-                )
-            )
-
-            response = opener.open(confirm_url, timeout=120)
-            pdf_content = response.read()
-
-            if not pdf_content.startswith(b"%PDF-"):
-                raise ValueError(
-                    "Google Drive returned a response that is not a PDF. "
-                    "Make sure the file is publicly accessible."
-                )
-
-            with open(destination, "wb") as file:
-                file.write(pdf_content)
-
-            return destination
-
-        # Another possible Google Drive download form
-        confirm_url = (
-            "https://drive.usercontent.google.com/download?"
-            + urllib.parse.urlencode(
-                {
-                    "id": file_id,
-                    "export": "download",
-                }
-            )
-        )
-
-        response = opener.open(confirm_url, timeout=120)
-        pdf_content = response.read()
-
-        if pdf_content.startswith(b"%PDF-"):
-            with open(destination, "wb") as file:
-                file.write(pdf_content)
-
-            return destination
-
-        raise ValueError(
-            "Google Drive did not return a PDF. "
-            "Check that the Drive file is shared as "
-            "'Anyone with the link'."
-        )
-
-    except urllib.error.HTTPError as error:
+    except urllib.error.HTTPError as e:
         raise RuntimeError(
-            f"Google Drive download failed with HTTP {error.code}."
-        ) from error
+            f"Google Drive download failed: HTTP {e.code}"
+        )
 
-    except urllib.error.URLError as error:
+    except Exception as e:
         raise RuntimeError(
-            f"Could not connect to Google Drive: {error.reason}"
-        ) from error
+            f"Google Drive download failed: {str(e)}"
+        )
 
 
 # ============================================================
@@ -267,7 +663,7 @@ def download_google_drive_pdf(url, destination):
 
 def extract_pdf_pages(pdf_path):
     """
-    Extract text page-by-page from the PDF.
+    Extract text page-by-page.
     """
 
     reader = PdfReader(pdf_path)
@@ -275,6 +671,7 @@ def extract_pdf_pages(pdf_path):
     pages = []
 
     for page_number, page in enumerate(reader.pages, start=1):
+
         try:
             text = page.extract_text() or ""
         except Exception:
@@ -295,39 +692,32 @@ def extract_pdf_pages(pdf_path):
 
 def create_chunks(
     pages,
-    chunk_size=1000,
+    chunk_size=900,
     overlap=150,
 ):
     """
-    Split PDF text into overlapping chunks.
-
-    Each chunk keeps its original PDF page number.
+    Split pages into overlapping chunks while preserving page numbers.
     """
 
-    if overlap >= chunk_size:
-        raise ValueError("Chunk overlap must be smaller than chunk size.")
-
     chunks = []
-    metadata = []
 
     for page_data in pages:
+
         page_number = page_data["page"]
         text = page_data["text"]
-
-        if not text:
-            continue
 
         start = 0
 
         while start < len(text):
+
             end = min(start + chunk_size, len(text))
 
-            chunk = text[start:end].strip()
+            chunk_text = text[start:end].strip()
 
-            if chunk:
-                chunks.append(chunk)
-                metadata.append(
+            if chunk_text:
+                chunks.append(
                     {
+                        "text": chunk_text,
                         "page": page_number,
                     }
                 )
@@ -335,13 +725,13 @@ def create_chunks(
             if end >= len(text):
                 break
 
-            start = end - overlap
+            start = max(0, end - overlap)
 
-    return chunks, metadata
+    return chunks
 
 
 # ============================================================
-# EMBEDDING MODEL
+# EMBEDDINGS
 # ============================================================
 
 @st.cache_resource(show_spinner=False)
@@ -349,184 +739,217 @@ def load_embedding_model():
     return SentenceTransformer(EMBEDDING_MODEL)
 
 
-# ============================================================
-# BUILD / LOAD VECTOR DATABASE
-# ============================================================
+def create_faiss_index(chunks):
+    """
+    Create normalized FAISS inner-product index.
+    """
 
-def database_exists():
-    return (
-        os.path.exists(PDF_FILE)
-        and os.path.exists(INDEX_FILE)
-        and os.path.exists(CHUNKS_FILE)
-        and os.path.exists(METADATA_FILE)
+    model = load_embedding_model()
+
+    texts = [chunk["text"] for chunk in chunks]
+
+    embeddings = model.encode(
+        texts,
+        convert_to_numpy=True,
+        normalize_embeddings=True,
+        show_progress_bar=False,
     )
 
+    embeddings = np.asarray(
+        embeddings,
+        dtype="float32",
+    )
 
-def save_database(chunks, metadata, embeddings):
-    """
-    Save FAISS index, chunks and metadata.
-    """
+    index = faiss.IndexFlatIP(
+        embeddings.shape[1]
+    )
 
-    dimension = embeddings.shape[1]
+    index.add(embeddings)
 
-    index = faiss.IndexFlatIP(dimension)
+    return index
 
-    # Normalize embeddings for cosine similarity
-    faiss.normalize_L2(embeddings)
 
-    index.add(embeddings.astype("float32"))
+def save_knowledge_base(index, chunks):
 
-    faiss.write_index(index, INDEX_FILE)
+    faiss.write_index(
+        index,
+        INDEX_PATH,
+    )
 
     np.save(
-        CHUNKS_FILE,
+        CHUNKS_PATH,
         np.array(chunks, dtype=object),
         allow_pickle=True,
     )
 
-    np.save(
-        METADATA_FILE,
-        np.array(metadata, dtype=object),
-        allow_pickle=True,
-    )
 
+def load_knowledge_base():
 
-def load_database():
-    index = faiss.read_index(INDEX_FILE)
+    if not os.path.exists(INDEX_PATH):
+        return None, []
 
-    chunks = np.load(
-        CHUNKS_FILE,
-        allow_pickle=True,
-    ).tolist()
+    if not os.path.exists(CHUNKS_PATH):
+        return None, []
 
-    metadata = np.load(
-        METADATA_FILE,
-        allow_pickle=True,
-    ).tolist()
+    try:
 
-    return index, chunks, metadata
-
-
-def build_database(force_rebuild=False):
-    """
-    Download PDF if necessary and create/load vector database.
-    """
-
-    if database_exists() and not force_rebuild:
-        try:
-            return load_database()
-        except Exception:
-            pass
-
-    with st.status(
-        "Preparing the CyberLaw knowledge base...",
-        expanded=True,
-    ) as status:
-
-        st.write("Downloading the legal source PDF...")
-
-        download_google_drive_pdf(
-            GOOGLE_DRIVE_URL,
-            PDF_FILE,
+        index = faiss.read_index(
+            INDEX_PATH
         )
 
-        st.write("Extracting PDF text...")
+        chunks_array = np.load(
+            CHUNKS_PATH,
+            allow_pickle=True,
+        )
 
-        pages = extract_pdf_pages(PDF_FILE)
+        chunks = chunks_array.tolist()
+
+        return index, chunks
+
+    except Exception:
+        return None, []
+
+
+def build_knowledge_base():
+
+    with st.spinner(
+        "Downloading and processing the cyber-law knowledge base..."
+    ):
+
+        if not os.path.exists(PDF_PATH):
+
+            download_google_drive_file(
+                GOOGLE_DRIVE_URL,
+                PDF_PATH,
+            )
+
+        pages = extract_pdf_pages(
+            PDF_PATH
+        )
 
         if not pages:
             raise ValueError(
-                "No readable text was extracted from the PDF. "
-                "The PDF may be scanned/image-only."
+                "No readable text was extracted from the PDF."
             )
 
-        st.write(
-            f"Extracted text from {len(pages)} pages."
+        chunks = create_chunks(
+            pages
         )
-
-        st.write("Creating text chunks...")
-
-        chunks, metadata = create_chunks(pages)
 
         if not chunks:
             raise ValueError(
-                "No text chunks were created from the PDF."
+                "No chunks were created from the PDF."
             )
 
-        st.write(
-            f"Created {len(chunks)} searchable chunks."
+        index = create_faiss_index(
+            chunks
         )
 
-        st.write("Creating embeddings...")
-
-        model = load_embedding_model()
-
-        embeddings = model.encode(
-            chunks,
-            batch_size=32,
-            show_progress_bar=False,
-            convert_to_numpy=True,
+        save_knowledge_base(
+            index,
+            chunks
         )
 
-        embeddings = embeddings.astype("float32")
+        return index, chunks
 
-        st.write("Building FAISS vector index...")
 
-        save_database(
-            chunks,
-            metadata,
-            embeddings,
-        )
+# ============================================================
+# KNOWLEDGE BASE INITIALIZATION
+# ============================================================
 
-        status.update(
-            label="Knowledge base ready.",
-            state="complete",
-            expanded=False,
-        )
+if st.session_state.index is None:
 
-    return load_database()
+    loaded_index, loaded_chunks = load_knowledge_base()
+
+    if loaded_index is not None:
+
+        st.session_state.index = loaded_index
+        st.session_state.chunks = loaded_chunks
+        st.session_state.knowledge_ready = True
+
+
+# ============================================================
+# GROQ
+# ============================================================
+
+def get_groq_api_key():
+
+    try:
+
+        if "GROQ_API_KEY" in st.secrets:
+            return st.secrets["GROQ_API_KEY"]
+
+    except Exception:
+        pass
+
+    return os.getenv("GROQ_API_KEY")
+
+
+def get_groq_client():
+
+    api_key = get_groq_api_key()
+
+    if not api_key:
+        return None
+
+    return Groq(
+        api_key=api_key
+    )
 
 
 # ============================================================
 # RETRIEVAL
 # ============================================================
 
-def retrieve_documents(
-    question,
-    index,
-    chunks,
-    metadata,
+def retrieve_context(
+    query,
     top_k=5,
 ):
-    """
-    Retrieve the most relevant legal document chunks.
-    """
+
+    if (
+        st.session_state.index is None
+        or not st.session_state.chunks
+    ):
+        return []
 
     model = load_embedding_model()
 
     query_embedding = model.encode(
-        [question],
+        [query],
         convert_to_numpy=True,
-    ).astype("float32")
+        normalize_embeddings=True,
+        show_progress_bar=False,
+    )
 
-    faiss.normalize_L2(query_embedding)
-
-    scores, indices = index.search(
+    query_embedding = np.asarray(
         query_embedding,
-        min(top_k, len(chunks)),
+        dtype="float32",
+    )
+
+    scores, indices = st.session_state.index.search(
+        query_embedding,
+        min(
+            top_k,
+            len(st.session_state.chunks),
+        ),
     )
 
     results = []
 
-    for score, idx in zip(scores[0], indices[0]):
+    for score, idx in zip(
+        scores[0],
+        indices[0],
+    ):
 
-        if idx < 0 or idx >= len(chunks):
+        if idx < 0:
             continue
+
+        chunk = st.session_state.chunks[idx]
 
         results.append(
             {
-                "text": chunks[idx],
-                "page": metadata[idx]["page"],
+                "text": chunk["text"],
+                "page": chunk["page"],
                 "score": float(score),
             }
         )
@@ -535,17 +958,11 @@ def retrieve_documents(
 
 
 # ============================================================
-# GROQ
+# PROMPT CONFIGURATION
 # ============================================================
 
-def get_groq_client(api_key):
-    if not api_key:
-        return None
+def get_response_tokens(size):
 
-    return Groq(api_key=api_key)
-
-
-def get_max_tokens(response_size):
     mapping = {
         "Short": 700,
         "Medium": 1200,
@@ -553,7 +970,10 @@ def get_max_tokens(response_size):
         "Very detailed": 3000,
     }
 
-    return mapping.get(response_size, 1200)
+    return mapping.get(
+        size,
+        1200,
+    )
 
 
 def build_system_prompt(
@@ -562,183 +982,221 @@ def build_system_prompt(
     language,
     answer_style,
 ):
+
+    language_instruction = {
+        "English": "Respond in clear English.",
+        "Urdu": "Respond in clear Urdu using Urdu script where appropriate.",
+        "Roman Urdu": "Respond in simple Roman Urdu.",
+    }.get(
+        language,
+        "Respond in clear English.",
+    )
+
+    style_instruction = {
+        "Professional": "Use a professional legal-information style.",
+        "Simple": "Explain concepts in simple language suitable for a beginner.",
+        "Educational": "Teach the topic step-by-step with short explanations and examples.",
+        "Direct": "Give a concise, direct answer and avoid unnecessary explanation.",
+    }.get(
+        answer_style,
+        "Use a professional legal-information style.",
+    )
+
     return f"""
 You are CyberLaw Pakistan AI, a retrieval-augmented legal information assistant.
 
-Your task is to answer questions using ONLY the legal source material retrieved
-from the configured Pakistani cyber-law PDF.
+Your job is to answer questions using ONLY the retrieved knowledge-base context
+provided to you.
 
-IMPORTANT LEGAL ACCURACY RULES:
+IMPORTANT LEGAL SAFETY RULES:
 
-1. Do not invent laws, sections, clauses, penalties, fines, procedures,
-   authorities, dates or legal requirements.
+1. Do not invent Pakistani laws.
+2. Do not invent sections, clauses, penalties, procedures, authorities, dates,
+   case citations, or legal terminology.
+3. Do not claim that a law exists unless it is supported by the retrieved context.
+4. If the knowledge base does not contain enough information, clearly say:
+   "The available knowledge base does not provide enough information to answer this reliably."
+5. Distinguish between information from the knowledge base and general explanation.
+6. Do not provide instructions that facilitate cybercrime, unauthorized access,
+   malware deployment, credential theft, evasion, exploitation, or other harmful activity.
+7. For cyber incidents, provide safe defensive and lawful guidance.
+8. Do not present the response as formal legal representation.
+9. Encourage consultation with a qualified Pakistani lawyer or relevant official
+   authority when the issue has significant legal consequences.
+10. Never fabricate source references.
 
-2. Do not claim that a specific section exists unless the retrieved source
-   supports it.
-
-3. If the retrieved evidence is insufficient, clearly say that the provided
-   source does not contain enough information to answer confidently.
-
-4. Never fabricate citations.
-
-5. Cite supporting evidence using:
-   [Source 1, Page X]
-   [Source 2, Page Y]
-
-6. If multiple sources support an answer, cite the relevant sources.
-
-7. Distinguish between:
-   - what the provided legal document says
-   - general explanation
-   - practical guidance
-
-8. Do not present yourself as a lawyer.
-
-9. For urgent legal matters, serious criminal allegations, arrests,
-   investigations or court proceedings, recommend consulting a qualified
-   Pakistani lawyer or relevant authority.
-
-10. Do not provide instructions that facilitate:
-    - hacking
-    - malware
-    - credential theft
-    - phishing
-    - unauthorized access
-    - evasion of law enforcement
-    - cyber attacks
-    - identity theft
-    - fraud
-    - abuse of computer systems
-
-11. If the user asks for harmful cyber instructions, refuse the harmful
-    operational part but provide a safe legal/security explanation when
-    appropriate.
-
-USER PREFERENCES:
+USER SETTINGS:
 
 Technical level: {technical_level}
 Response size: {response_size}
 Language: {language}
 Answer style: {answer_style}
 
-Answer entirely in the selected language.
+{language_instruction}
+{style_instruction}
 
-Be precise, structured and easy to understand.
+SOURCE CITATION FORMAT:
+
+When the answer is supported by the retrieved context, cite it as:
+
+[Source 1, Page X]
+
+Use the actual page number supplied with the context.
+
+If multiple sources support a statement, cite each relevant source.
+
+Keep citations close to the relevant claim.
 """
 
 
-def create_context(results):
+def build_context(results):
+
     if not results:
-        return "No relevant legal evidence was retrieved."
+        return "No relevant knowledge-base context was retrieved."
 
-    context_parts = []
+    sections = []
 
-    for i, result in enumerate(results, start=1):
-        context_parts.append(
+    for i, result in enumerate(
+        results,
+        start=1,
+    ):
+
+        sections.append(
             f"""
 SOURCE {i}
-PDF Page: {result["page"]}
-Similarity Score: {result["score"]:.4f}
+Page: {result["page"]}
+Similarity: {result["score"]:.4f}
 
-TEXT:
 {result["text"]}
 """
         )
 
-    return "\n".join(context_parts)
+    return "\n".join(sections)
 
 
-def build_conversation_history(messages):
-    """
-    Include a small amount of previous conversation so follow-up questions
-    can work more naturally.
-    """
+# ============================================================
+# RAG ANSWER
+# ============================================================
 
-    if not messages:
-        return ""
-
-    history = messages[-6:]
-
-    lines = []
-
-    for message in history:
-        role = message.get("role", "")
-        content = message.get("content", "")
-
-        if role in ("user", "assistant"):
-            lines.append(
-                f"{role.upper()}: {content}"
-            )
-
-    return "\n".join(lines)
-
-
-def ask_groq(
+def ask_rag(
     question,
-    context,
-    history,
-    api_key,
-    model_name,
     technical_level,
     response_size,
     language,
     answer_style,
+    top_k,
+    model_name,
 ):
-    client = get_groq_client(api_key)
+
+    client = get_groq_client()
 
     if client is None:
-        raise ValueError(
-            "GROQ_API_KEY is missing."
-        )
+        return (
+            "Groq API key is not configured.\n\n"
+            "Add `GROQ_API_KEY` to Streamlit secrets or your environment variables."
+        ), [], 0
+
+    if not st.session_state.knowledge_ready:
+
+        return (
+            "The cyber-law knowledge base is not ready yet. "
+            "Please build the knowledge base from the sidebar."
+        ), [], 0
+
+    results = retrieve_context(
+        question,
+        top_k=top_k,
+    )
+
+    context = build_context(
+        results
+    )
 
     system_prompt = build_system_prompt(
-        technical_level=technical_level,
-        response_size=response_size,
-        language=language,
-        answer_style=answer_style,
+        technical_level,
+        response_size,
+        language,
+        answer_style,
     )
 
-    user_prompt = f"""
-RETRIEVED LEGAL EVIDENCE:
-{context}
+    history = []
 
-PREVIOUS CONVERSATION:
-{history if history else "No previous conversation."}
+    for message in st.session_state.messages[-6:]:
 
-CURRENT USER QUESTION:
+        history.append(
+            {
+                "role": message["role"],
+                "content": message["content"],
+            }
+        )
+
+    messages = [
+        {
+            "role": "system",
+            "content": system_prompt,
+        }
+    ]
+
+    messages.extend(history)
+
+    messages.append(
+        {
+            "role": "user",
+            "content": f"""
+QUESTION:
+
 {question}
 
-INSTRUCTIONS:
+RETRIEVED KNOWLEDGE-BASE CONTEXT:
 
-Answer the current question based primarily on the retrieved legal evidence.
+{context}
 
-If the evidence does not support a specific legal claim, say so.
-
-Do not fill missing legal information with assumptions.
-
-Include source citations in this exact style where applicable:
-[Source 1, Page X]
-
-Give a useful answer rather than simply repeating the source.
-"""
-
-    response = client.chat.completions.create(
-        model=model_name,
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": user_prompt,
-            },
-        ],
-        temperature=0.1,
-        max_tokens=get_max_tokens(response_size),
+Answer the question based on the retrieved context.
+Do not invent missing legal information.
+""",
+        }
     )
 
-    return response.choices[0].message.content
+    try:
+
+        completion = client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            temperature=0.15,
+            max_tokens=get_response_tokens(
+                response_size
+            ),
+        )
+
+        answer = (
+            completion.choices[0].message.content
+            if completion.choices
+            else "No response was generated."
+        )
+
+        usage_tokens = 0
+
+        if getattr(completion, "usage", None):
+
+            usage_tokens = getattr(
+                completion.usage,
+                "total_tokens",
+                0,
+            ) or 0
+
+        return (
+            answer,
+            results,
+            usage_tokens,
+        )
+
+    except Exception as e:
+
+        return (
+            f"Unable to generate the answer.\n\nError: {str(e)}",
+            results,
+            0,
+        )
 
 
 # ============================================================
@@ -747,85 +1205,106 @@ Give a useful answer rather than simply repeating the source.
 
 def generate_complaint(
     incident,
-    context,
-    api_key,
-    model_name,
     language,
+    model_name,
 ):
-    client = get_groq_client(api_key)
+
+    client = get_groq_client()
 
     if client is None:
-        raise ValueError(
-            "GROQ_API_KEY is missing."
+        return (
+            "Groq API key is not configured.",
+            0,
         )
 
-    system_prompt = f"""
-You are an assistant helping users prepare a factual cybercrime complaint
-draft for Pakistan.
+    results = retrieve_context(
+        incident,
+        top_k=5,
+    )
 
-Language: {language}
+    context = build_context(
+        results
+    )
 
-Use the retrieved legal source only for legal references.
+    prompt = f"""
+Create a factual cybercrime complaint draft based on the incident below.
 
-Do not invent:
-- sections
+Use the supplied knowledge-base context for legal references.
+
+Do NOT invent:
 - laws
+- sections
 - penalties
+- government procedures
 - authorities
-- procedures
-- dates
-- evidence
+- case numbers
+- legal claims
 
-Do not make accusations beyond the facts supplied by the user.
+If something is unknown, use a placeholder or state that it needs verification.
 
-Clearly mark the result as a DRAFT that should be reviewed before submission.
+Write the complaint in {language}.
 
-Do not provide false legal certainty.
-"""
+Include:
 
-    user_prompt = f"""
-INCIDENT DETAILS:
+1. Subject
+2. Complainant information placeholders
+3. Incident summary
+4. Date/time placeholders
+5. Evidence available
+6. Requested action
+7. Contact information placeholders
+8. Disclaimer that the draft should be reviewed before submission
+
+INCIDENT:
 
 {incident}
 
-RELEVANT LEGAL SOURCE:
+KNOWLEDGE-BASE CONTEXT:
 
 {context}
-
-Create a professional complaint draft containing:
-
-1. Subject
-2. Complainant details placeholder
-3. Incident description
-4. Date/time placeholder if not supplied
-5. Platform/device placeholder if relevant
-6. Suspect information if supplied
-7. Evidence list
-8. Requested action
-9. Declaration
-10. Signature/date placeholders
-
-Only mention legal provisions when they are supported by the supplied
-retrieved source.
 """
 
-    response = client.chat.completions.create(
-        model=model_name,
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": user_prompt,
-            },
-        ],
-        temperature=0.1,
-        max_tokens=2500,
-    )
+    try:
 
-    return response.choices[0].message.content
+        completion = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You create factual, lawful cybercrime complaint drafts. "
+                        "Never fabricate legal information."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=0.15,
+            max_tokens=2200,
+        )
+
+        answer = completion.choices[0].message.content
+
+        usage_tokens = 0
+
+        if getattr(completion, "usage", None):
+
+            usage_tokens = getattr(
+                completion.usage,
+                "total_tokens",
+                0,
+            ) or 0
+
+        return answer, usage_tokens
+
+    except Exception as e:
+
+        return (
+            f"Unable to generate complaint draft.\n\nError: {str(e)}",
+            0,
+        )
 
 
 # ============================================================
@@ -834,7 +1313,28 @@ retrieved source.
 
 with st.sidebar:
 
-    st.markdown("## ⚖️ CyberLaw Pakistan AI")
+    st.markdown(
+        """
+        <div style="
+            font-size:25px;
+            font-weight:800;
+            margin-bottom:4px;
+        ">
+            ⚖️ CyberLaw Pakistan AI
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.caption(
+        "RAG-powered Pakistani cyber-law information assistant"
+    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # NAVIGATION
+    # --------------------------------------------------------
 
     page = st.radio(
         "Navigation",
@@ -843,7 +1343,100 @@ with st.sidebar:
             "File a Complaint",
             "About",
         ],
+        label_visibility="collapsed",
     )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # POLISHED THEME TOGGLE
+    # --------------------------------------------------------
+
+    current_dark = (
+        st.session_state.theme == "Dark"
+    )
+
+    st.markdown(
+        f"""
+        <div class="theme-toggle-container">
+            <div class="theme-toggle-title">
+                <span class="theme-icon">
+                    {"🌙" if current_dark else "☀️"}
+                </span>
+                <span>
+                    {"Dark Mode" if current_dark else "Light Mode"}
+                </span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    toggle_value = st.toggle(
+        "Switch theme",
+        value=current_dark,
+        label_visibility="collapsed",
+        key="theme_toggle",
+    )
+
+    new_theme = (
+        "Dark"
+        if toggle_value
+        else "Light"
+    )
+
+    if new_theme != st.session_state.theme:
+
+        st.session_state.theme = new_theme
+
+        # Automatic background adjustment.
+        if new_theme == "Dark":
+
+            st.session_state.background_color = "#0B0F14"
+
+        else:
+
+            st.session_state.background_color = "#F5F7FA"
+
+        st.rerun()
+
+    # --------------------------------------------------------
+    # COLOR SETTINGS
+    # --------------------------------------------------------
+
+    st.markdown("### Appearance")
+
+    st.session_state.accent_color = st.color_picker(
+        "Accent color",
+        value=st.session_state.accent_color,
+    )
+
+    default_background = (
+        "#0B0F14"
+        if st.session_state.theme == "Dark"
+        else "#F5F7FA"
+    )
+
+    if (
+        "background_initialized" not in st.session_state
+        or st.session_state.background_initialized
+        != st.session_state.theme
+    ):
+
+        st.session_state.background_color = default_background
+
+        st.session_state.background_initialized = (
+            st.session_state.theme
+        )
+
+    st.session_state.background_color = st.color_picker(
+        "Background color",
+        value=st.session_state.background_color,
+    )
+
+    # --------------------------------------------------------
+    # AI SETTINGS
+    # --------------------------------------------------------
 
     st.divider()
 
@@ -855,7 +1448,7 @@ with st.sidebar:
             "Beginner",
             "Intermediate",
             "Advanced",
-            "Legal/Technical",
+            "Legal / Technical",
         ],
         index=0,
     )
@@ -872,7 +1465,7 @@ with st.sidebar:
     )
 
     language = st.selectbox(
-        "Response language",
+        "Language",
         [
             "English",
             "Urdu",
@@ -884,10 +1477,10 @@ with st.sidebar:
     answer_style = st.selectbox(
         "Answer style",
         [
-            "Clear explanation",
-            "Step-by-step",
-            "Bullet points",
-            "Professional legal information",
+            "Professional",
+            "Simple",
+            "Educational",
+            "Direct",
         ],
         index=0,
     )
@@ -905,120 +1498,184 @@ with st.sidebar:
         value=True,
     )
 
+    # --------------------------------------------------------
+    # MODEL
+    # --------------------------------------------------------
+
     st.divider()
 
-    st.markdown("### Groq")
+    st.markdown("### Model")
 
-    groq_api_key = st.text_input(
-        "Groq API Key",
-        value=os.getenv("GROQ_API_KEY", ""),
-        type="password",
-        help="Your Groq API key.",
-    )
-
-    groq_model = st.text_input(
+    selected_model = st.selectbox(
         "Groq model",
-        value=DEFAULT_GROQ_MODEL,
+        MODEL_OPTIONS,
+        index=MODEL_OPTIONS.index(
+            st.session_state.selected_model
+        )
+        if st.session_state.selected_model
+        in MODEL_OPTIONS
+        else 0,
     )
+
+    st.session_state.selected_model = (
+        selected_model
+    )
+
+    # --------------------------------------------------------
+    # USAGE
+    # --------------------------------------------------------
+
+    st.divider()
+
+    st.markdown("### Usage")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric(
+            "Prompts",
+            st.session_state.total_prompts,
+        )
+
+    with col2:
+        st.metric(
+            "Messages",
+            st.session_state.total_messages,
+        )
+
+    st.metric(
+        "Tokens",
+        st.session_state.total_tokens,
+    )
+
+    # --------------------------------------------------------
+    # KNOWLEDGE BASE
+    # --------------------------------------------------------
 
     st.divider()
 
     st.markdown("### Knowledge Base")
 
-    if database_exists():
-        st.success("Knowledge base available.")
-    else:
-        st.warning("Knowledge base not built yet.")
+    if st.session_state.knowledge_ready:
 
-    rebuild = st.button(
-        "🔄 Rebuild knowledge base",
+        st.success(
+            f"Ready • {len(st.session_state.chunks)} chunks"
+        )
+
+    else:
+
+        st.warning(
+            "Knowledge base not built"
+        )
+
+    if st.button(
+        "🔄 Build / Rebuild Knowledge Base",
         use_container_width=True,
-    )
+    ):
+
+        try:
+
+            new_index, new_chunks = (
+                build_knowledge_base()
+            )
+
+            st.session_state.index = new_index
+            st.session_state.chunks = new_chunks
+            st.session_state.knowledge_ready = True
+
+            st.success(
+                f"Knowledge base ready with {len(new_chunks)} chunks."
+            )
+
+        except Exception as e:
+
+            st.error(
+                f"Knowledge-base error: {str(e)}"
+            )
 
 
 # ============================================================
-# DATABASE INITIALIZATION
+# MAIN HEADER
 # ============================================================
 
-try:
-    if rebuild:
-        index, chunks, metadata = build_database(
-            force_rebuild=True
-        )
-    else:
-        index, chunks, metadata = build_database(
-            force_rebuild=False
-        )
+st.markdown(
+    """
+    <div class="app-title">
+        ⚖️ CyberLaw Pakistan AI
+    </div>
 
-except Exception as error:
-    st.error("Could not prepare the CyberLaw knowledge base.")
+    <div class="app-subtitle">
+        Ask questions about Pakistani cyber law using a
+        retrieval-augmented knowledge base.
+    </div>
 
-    st.code(
-        str(error),
-        language="text",
-    )
-
-    st.info(
-        "Check that your Google Drive PDF is publicly accessible "
-        "and that the file contains selectable text."
-    )
-
-    st.stop()
+    <div class="accent-line"></div>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # ============================================================
-# AI ASSISTANT
+# AI ASSISTANT PAGE
 # ============================================================
 
 if page == "AI Assistant":
 
+    if not st.session_state.knowledge_ready:
+
+        st.warning(
+            "The knowledge base has not been built yet."
+        )
+
+        st.info(
+            "Use **Build / Rebuild Knowledge Base** in the sidebar "
+            "to download the supplied Google Drive PDF, extract its "
+            "text, create embeddings, and build the FAISS index."
+        )
+
+    # --------------------------------------------------------
+    # INTRO CARD
+    # --------------------------------------------------------
+
     st.markdown(
-        '<div class="main-title">⚖️ CyberLaw Pakistan AI</div>',
+        """
+        <div class="custom-card">
+
+        <h3>Ask CyberLaw Pakistan AI</h3>
+
+        <p>
+        Ask questions about cyber-law concepts, legal terminology,
+        cybercrime scenarios, reporting considerations, and other
+        topics covered by the connected knowledge base.
+        </p>
+
+        <p>
+        <strong>Important:</strong>
+        This application provides information, not formal legal advice.
+        </p>
+
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        '<div class="subtitle">'
-        "Ask questions about the Pakistani cyber-law source document."
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.info(
-        "This application provides AI-assisted legal information based on "
-        "the configured PDF. It is not a substitute for advice from a "
-        "qualified lawyer."
-    )
-
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    if st.button(
-        "Clear conversation",
-        type="secondary",
-    ):
-        st.session_state.messages = []
-        st.rerun()
+    # --------------------------------------------------------
+    # CHAT HISTORY
+    # --------------------------------------------------------
 
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
 
-            if (
-                message["role"] == "assistant"
-                and show_sources
-                and message.get("sources")
-            ):
-                with st.expander("Retrieved sources"):
-                    for source in message["sources"]:
-                        st.markdown(
-                            f"""
-**Page {source["page"]}**  
-Similarity: `{source["score"]:.4f}`
+        with st.chat_message(
+            message["role"]
+        ):
 
-{source["text"]}
-"""
-                        )
+            st.markdown(
+                message["content"]
+            )
+
+    # --------------------------------------------------------
+    # CHAT INPUT
+    # --------------------------------------------------------
 
     question = st.chat_input(
         "Ask a question about Pakistani cyber law..."
@@ -1026,6 +1683,12 @@ Similarity: `{source["score"]:.4f}`
 
     if question:
 
+        question = question.strip()
+
+        if not question:
+            st.stop()
+
+        # User message
         st.session_state.messages.append(
             {
                 "role": "user",
@@ -1033,113 +1696,86 @@ Similarity: `{source["score"]:.4f}`
             }
         )
 
-        with st.chat_message("user"):
-            st.markdown(question)
+        st.session_state.total_prompts += 1
+        st.session_state.total_messages += 1
 
+        with st.chat_message("user"):
+
+            st.markdown(
+                question
+            )
+
+        # Assistant
         with st.chat_message("assistant"):
 
-            try:
-                with st.spinner("Searching the legal knowledge base..."):
+            with st.spinner(
+                "Searching the knowledge base and generating an answer..."
+            ):
 
-                    results = retrieve_documents(
-                        question=question,
-                        index=index,
-                        chunks=chunks,
-                        metadata=metadata,
-                        top_k=top_k,
-                    )
-
-                context = create_context(results)
-
-                history = build_conversation_history(
-                    st.session_state.messages[:-1]
+                answer, sources, token_count = ask_rag(
+                    question=question,
+                    technical_level=technical_level,
+                    response_size=response_size,
+                    language=language,
+                    answer_style=answer_style,
+                    top_k=top_k,
+                    model_name=selected_model,
                 )
 
-                with st.spinner("Generating answer..."):
+            st.markdown(
+                answer
+            )
 
-                    answer = ask_groq(
-                        question=question,
-                        context=context,
-                        history=history,
-                        api_key=groq_api_key,
-                        model_name=groq_model,
-                        technical_level=technical_level,
-                        response_size=response_size,
-                        language=language,
-                        answer_style=answer_style,
-                    )
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": answer,
+                }
+            )
 
-                st.markdown(answer)
+            st.session_state.total_messages += 1
+            st.session_state.total_tokens += token_count
 
-                if show_sources and results:
+            if show_sources and sources:
+
+                st.markdown(
+                    "### Retrieved Sources"
+                )
+
+                for i, source in enumerate(
+                    sources,
+                    start=1,
+                ):
 
                     with st.expander(
-                        "Retrieved sources",
-                        expanded=False,
+                        f"Source {i} • Page {source['page']} • Similarity {source['score']:.3f}"
                     ):
 
-                        for i, result in enumerate(
-                            results,
-                            start=1,
-                        ):
-
-                            st.markdown(
-                                f"""
-**Source {i} — Page {result["page"]}**
-
-Similarity score: `{result["score"]:.4f}`
-
-{result["text"]}
-"""
-                            )
-
-                st.session_state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": answer,
-                        "sources": results,
-                    }
-                )
-
-            except Exception as error:
-
-                error_message = (
-                    "I could not generate the answer.\n\n"
-                    f"**Error:** `{error}`"
-                )
-
-                st.error(error_message)
-
-                st.session_state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": error_message,
-                        "sources": [],
-                    }
-                )
+                        st.write(
+                            source["text"]
+                        )
 
 
 # ============================================================
-# FILE A COMPLAINT
+# COMPLAINT PAGE
 # ============================================================
 
 elif page == "File a Complaint":
 
     st.markdown(
-        '<div class="main-title">📝 Cybercrime Complaint Draft</div>',
-        unsafe_allow_html=True,
-    )
+        """
+        <div class="custom-card">
 
-    st.markdown(
-        '<div class="subtitle">'
-        "Describe the incident and generate a factual complaint draft."
-        "</div>",
-        unsafe_allow_html=True,
-    )
+        <h3>📝 Cybercrime Complaint Draft</h3>
 
-    st.warning(
-        "This creates a draft only. Review all details and legal references "
-        "before submitting a complaint to any authority."
+        <p>
+        Describe the incident and the AI will create a structured
+        complaint draft using the available knowledge base.
+        </p>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     incident = st.text_area(
@@ -1147,196 +1783,211 @@ elif page == "File a Complaint":
         height=250,
         placeholder=(
             "Example:\n"
-            "Someone created a fake social media account using my name "
-            "and uploaded my photos without permission. The account URL is..."
+            "My social media account was compromised and unauthorized "
+            "messages were sent from my account..."
         ),
     )
 
-    evidence = st.text_area(
-        "Evidence you have",
-        height=150,
-        placeholder=(
-            "Screenshots, profile URL, messages, transaction records, "
-            "email headers, phone numbers, etc."
-        ),
-    )
-
-    generate_button = st.button(
-        "Generate complaint draft",
+    if st.button(
+        "Generate Complaint Draft",
         type="primary",
         use_container_width=True,
-    )
-
-    if generate_button:
-
-        if not groq_api_key:
-            st.error(
-                "Please enter your GROQ_API_KEY in the sidebar."
-            )
-            st.stop()
+    ):
 
         if not incident.strip():
-            st.error(
+
+            st.warning(
                 "Please describe the incident first."
             )
-            st.stop()
 
-        complete_incident = f"""
-INCIDENT:
-{incident}
+        elif not st.session_state.knowledge_ready:
 
-EVIDENCE:
-{evidence if evidence.strip() else "No evidence details supplied."}
-"""
-
-        with st.spinner(
-            "Searching the legal source..."
-        ):
-
-            results = retrieve_documents(
-                question=incident,
-                index=index,
-                chunks=chunks,
-                metadata=metadata,
-                top_k=top_k,
+            st.warning(
+                "Please build the knowledge base first."
             )
 
-        context = create_context(results)
+        else:
 
-        with st.spinner(
-            "Preparing complaint draft..."
-        ):
+            with st.spinner(
+                "Preparing complaint draft..."
+            ):
 
-            try:
-                complaint = generate_complaint(
-                    incident=complete_incident,
-                    context=context,
-                    api_key=groq_api_key,
-                    model_name=groq_model,
-                    language=language,
+                complaint, token_count = (
+                    generate_complaint(
+                        incident=incident,
+                        language=language,
+                        model_name=selected_model,
+                    )
                 )
 
-                st.success(
-                    "Complaint draft generated."
-                )
+            st.session_state.total_tokens += token_count
 
-                st.markdown("### Draft")
+            st.markdown(
+                "### Generated Draft"
+            )
 
-                st.markdown(complaint)
+            st.markdown(
+                complaint
+            )
 
-                st.download_button(
-                    "Download complaint draft",
-                    data=complaint,
-                    file_name="cybercrime_complaint_draft.txt",
-                    mime="text/plain",
-                    use_container_width=True,
-                )
+            st.download_button(
+                "⬇️ Download Complaint Draft",
+                data=complaint,
+                file_name="cybercrime_complaint_draft.txt",
+                mime="text/plain",
+                use_container_width=True,
+            )
 
-                if show_sources:
-
-                    with st.expander(
-                        "Legal sources used"
-                    ):
-
-                        for i, result in enumerate(
-                            results,
-                            start=1,
-                        ):
-
-                            st.markdown(
-                                f"""
-**Source {i} — Page {result["page"]}**
-
-{result["text"]}
-"""
-                            )
-
-            except Exception as error:
-
-                st.error(
-                    f"Could not generate the complaint: {error}"
-                )
+            st.info(
+                "Review all facts and legal references before submitting "
+                "a complaint. The generated text is a draft and is not "
+                "a substitute for professional legal advice."
+            )
 
 
 # ============================================================
-# ABOUT
+# ABOUT PAGE
 # ============================================================
 
 elif page == "About":
 
     st.markdown(
-        '<div class="main-title">ℹ️ About</div>',
+        """
+        <div class="custom-card">
+
+        <h2>About CyberLaw Pakistan AI</h2>
+
+        <p>
+        CyberLaw Pakistan AI is a Retrieval-Augmented Generation (RAG)
+        application designed to answer questions using a connected
+        cyber-law knowledge base.
+        </p>
+
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        st.markdown(
+            """
+            <div class="stat-card">
+
+            <div class="stat-number">
+                RAG
+            </div>
+
+            <div class="stat-label">
+                Retrieval-Augmented Generation
+            </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col2:
+
+        st.markdown(
+            """
+            <div class="stat-card">
+
+            <div class="stat-number">
+                FAISS
+            </div>
+
+            <div class="stat-label">
+                Vector similarity search
+            </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col3:
+
+        st.markdown(
+            """
+            <div class="stat-card">
+
+            <div class="stat-number">
+                Groq
+            </div>
+
+            <div class="stat-label">
+                LLM inference
+            </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("### Technology Pipeline")
+
     st.markdown(
         """
-## CyberLaw Pakistan AI
+        **1. Source PDF**
 
-CyberLaw Pakistan AI is a Retrieval-Augmented Generation (RAG)
-application designed to answer questions using a Pakistani cyber-law
-PDF as its knowledge source.
+        The application downloads the configured Google Drive PDF.
 
-### How it works
+        **2. Text Extraction**
 
-1. Downloads the legal PDF from Google Drive.
-2. Extracts text from the PDF.
-3. Splits the text into searchable chunks.
-4. Creates vector embeddings.
-5. Stores the embeddings in FAISS.
-6. Retrieves the most relevant legal passages.
-7. Sends the retrieved evidence to Groq.
-8. Generates an answer grounded in the retrieved source.
+        `pypdf` extracts readable text page-by-page.
 
-### Main technologies
+        **3. Chunking**
 
-- Python
-- Streamlit
-- PyPDF
-- Sentence Transformers
-- FAISS
-- Groq
-- RAG
+        The document is divided into overlapping text chunks.
 
-### Important limitation
+        **4. Embeddings**
 
-The application can only provide reliable source-grounded answers
-when the supplied PDF contains the relevant legal information.
+        `all-MiniLM-L6-v2` converts chunks into vector embeddings.
 
-It should not be treated as a lawyer, court, government authority,
-or official legal-information service.
+        **5. Vector Search**
 
-Always verify important legal matters against current official sources
-and obtain professional legal advice when necessary.
+        FAISS retrieves the most relevant chunks for each question.
+
+        **6. Generation**
+
+        Groq generates an answer using the retrieved context.
+
+        **7. Citation**
+
+        Retrieved page numbers are included to make the answer traceable.
         """
     )
 
-    st.markdown("### Knowledge Base")
+    st.markdown("### Privacy & API Key")
 
-    st.write(
-        f"PDF: `{os.path.basename(PDF_FILE)}`"
+    st.info(
+        "The Groq API key is not displayed in the user interface. "
+        "Configure it using Streamlit secrets or the GROQ_API_KEY "
+        "environment variable."
     )
 
-    st.write(
-        f"Indexed chunks: `{len(chunks)}`"
+    st.markdown("### Legal Disclaimer")
+
+    st.warning(
+        "This application is an AI information assistant. "
+        "It does not provide formal legal advice, legal representation, "
+        "or guaranteed legal conclusions. Always verify important legal "
+        "matters with an appropriate qualified professional or official source."
     )
 
-    st.write(
-        f"Embedding model: `{EMBEDDING_MODEL}`"
-    )
 
-    st.write(
-        f"Groq model: `{groq_model}`"
-    )
+# ============================================================
+# FOOTER
+# ============================================================
 
-    st.markdown(
-        """
-### Source configuration
-
-The application is configured to use the Google Drive PDF supplied
-for this project.
-
-Make sure the Google Drive file sharing setting allows access to
-people with the link.
-        """
-    )
+st.markdown(
+    """
+    <div class="footer">
+        ⚖️ CyberLaw Pakistan AI • RAG + FAISS + Sentence Transformers + Groq
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
