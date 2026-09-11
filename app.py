@@ -4,6 +4,8 @@ import urllib.parse
 import urllib.request
 import urllib.error
 
+import gdown
+
 import numpy as np
 import streamlit as st
 from pypdf import PdfReader
@@ -656,58 +658,50 @@ def extract_drive_file_id(url):
 
 
 def download_google_drive_file(url, destination):
-    """
-    Download a Google Drive file using its file ID.
-    """
-
+    """Download a Google Drive file reliably, including Drive confirmation pages."""
     file_id = extract_drive_file_id(url)
-
     if not file_id:
-        raise ValueError("Could not extract Google Drive file ID.")
+        raise ValueError("Could not extract Google Drive file ID from the URL.")
 
-    download_url = (
-        "https://drive.usercontent.google.com/download"
-        f"?id={urllib.parse.quote(file_id)}&export=download&confirm=t"
-    )
+    os.makedirs(os.path.dirname(destination) or ".", exist_ok=True)
 
-    request = urllib.request.Request(
-        download_url,
-        headers={
-            "User-Agent": "Mozilla/5.0"
-        },
-    )
-
+    # gdown handles Google Drive's download/confirmation flow much more reliably
+    # than treating the /view URL as a normal HTTP file download.
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            data = response.read()
-            content_type = (response.headers.get("Content-Type") or "").lower()
-
-        if not data:
-            raise ValueError("Google Drive returned an empty file.")
-
-        # Google Drive can return an HTML permission/login page instead of the PDF.
-        if data[:5] != b"%PDF-":
-            if "text/html" in content_type or b"<html" in data[:2048].lower():
-                raise RuntimeError(
-                    "Google Drive did not return a PDF. Make sure the file is shared "
-                    "as 'Anyone with the link' (Viewer)."
-                )
-            raise RuntimeError("The downloaded Google Drive file is not a valid PDF.")
-
-        with open(destination, "wb") as f:
-            f.write(data)
-
-        return destination
-
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(
-            f"Google Drive download failed: HTTP {e.code}"
+        downloaded = gdown.download(
+            id=file_id,
+            output=destination,
+            quiet=True,
+            fuzzy=True,
         )
-
     except Exception as e:
+        raise RuntimeError(f"Google Drive download failed: {e}") from e
+
+    if not downloaded or not os.path.exists(destination):
         raise RuntimeError(
-            f"Google Drive download failed: {str(e)}"
+            "Google Drive download returned no file. Check that the PDF is shared "
+            "as 'Anyone with the link' → 'Viewer'."
         )
+
+    # Validate the actual bytes so an HTML login/permission page is never cached
+    # as the source PDF.
+    try:
+        with open(destination, "rb") as f:
+            header = f.read(5)
+    except OSError as e:
+        raise RuntimeError(f"Could not read downloaded PDF: {e}") from e
+
+    if header != b"%PDF-":
+        try:
+            os.remove(destination)
+        except OSError:
+            pass
+        raise RuntimeError(
+            "Google Drive did not return a valid PDF. Set the Drive file sharing to "
+            "'Anyone with the link' → 'Viewer', then rebuild the knowledge base."
+        )
+
+    return destination
 
 
 # ============================================================
