@@ -680,9 +680,19 @@ def download_google_drive_file(url, destination):
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
             data = response.read()
+            content_type = (response.headers.get("Content-Type") or "").lower()
 
         if not data:
             raise ValueError("Google Drive returned an empty file.")
+
+        # Google Drive can return an HTML permission/login page instead of the PDF.
+        if data[:5] != b"%PDF-":
+            if "text/html" in content_type or b"<html" in data[:2048].lower():
+                raise RuntimeError(
+                    "Google Drive did not return a PDF. Make sure the file is shared "
+                    "as 'Anyone with the link' (Viewer)."
+                )
+            raise RuntimeError("The downloaded Google Drive file is not a valid PDF.")
 
         with open(destination, "wb") as f:
             f.write(data)
@@ -709,7 +719,16 @@ def extract_pdf_pages(pdf_path):
     Extract text page-by-page.
     """
 
-    reader = PdfReader(pdf_path)
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(f"PDF source not found: {pdf_path}")
+
+    try:
+        reader = PdfReader(pdf_path)
+    except Exception as e:
+        raise RuntimeError(
+            "The source file could not be opened as a PDF. "
+            "Check the Google Drive sharing link and rebuild the knowledge base."
+        ) from e
 
     pages = []
 
@@ -858,6 +877,13 @@ def build_knowledge_base():
     with st.spinner(
         "Downloading and processing the cyber-law knowledge base..."
     ):
+
+        # Explicit rebuild always downloads a fresh source PDF.
+        if os.path.exists(PDF_PATH):
+            try:
+                os.remove(PDF_PATH)
+            except OSError:
+                pass
 
         if not os.path.exists(PDF_PATH):
 
@@ -2002,6 +2028,16 @@ elif page == "About":
 
         Retrieved page numbers are included to make the answer traceable.
         """
+    )
+
+    st.markdown("### Browser / WebSocket troubleshooting")
+
+    st.info(
+        "If the browser console shows `WebSocket onerror` together with "
+        "`Page entered Back-Forward Cache`, refresh the Streamlit page. "
+        "This is a browser/Streamlit runtime navigation issue, not an RAG, "
+        "FAISS, Groq, or Google Drive API route in this app. Avoid Back/Forward "
+        "navigation while a request is running."
     )
 
     st.markdown("### Privacy & API Key")
