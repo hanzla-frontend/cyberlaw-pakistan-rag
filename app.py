@@ -349,27 +349,65 @@ def apply_theme():
         }}
 
         /* ==================================================
-           CHAT INPUT
+           CHAT INPUT — CONTINUOUS INPUT + SEND BUTTON
            ================================================== */
 
         div[data-testid="stChatInput"] {{
             background: transparent !important;
+            padding: 0 !important;
         }}
 
-        div[data-testid="stChatInput"] textarea {{
+        div[data-testid="stChatInput"] > div {{
+            display: flex !important;
+            align-items: center !important;
+            gap: 0 !important;
             background: {c["input"]} !important;
-            color: {c["text"]} !important;
             border: 1px solid {c["border"]} !important;
             border-radius: 14px !important;
+            overflow: hidden !important;
+            padding: 0 !important;
+        }}
+
+        /* Input text area */
+        div[data-testid="stChatInput"] textarea {{
+            flex: 1 1 auto !important;
+            background: transparent !important;
+            color: {c["text"]} !important;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
         }}
 
         div[data-testid="stChatInput"] textarea::placeholder {{
             color: {c["placeholder"]} !important;
+            opacity: 1 !important;
         }}
 
-        div[data-testid="stChatInput"] textarea:focus {{
+        /* Focus the complete input + button container */
+        div[data-testid="stChatInput"]:focus-within > div {{
             border-color: {c["accent"]} !important;
             box-shadow: 0 0 0 1px {c["accent"]} !important;
+        }}
+
+        /* Send button stays aligned with the input */
+        div[data-testid="stChatInput"] button {{
+            background: {c["accent"]} !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            border-radius: 0 !important;
+            min-width: 52px !important;
+            min-height: 52px !important;
+            height: 100% !important;
+            margin: 0 !important;
+            align-self: stretch !important;
+            flex: 0 0 52px !important;
+        }}
+
+        div[data-testid="stChatInput"] button:hover {{
+            background: {c["accent_hover"]} !important;
+            color: #FFFFFF !important;
         }}
 
         /* ==================================================
