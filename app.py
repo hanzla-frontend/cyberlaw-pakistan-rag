@@ -349,7 +349,7 @@ def apply_theme():
         }}
 
         /* ==================================================
-           CHAT INPUT — CONTINUOUS INPUT + SEND BUTTON
+           CHAT INPUT — CONTINUOUS + DARK/LIGHT TEXT
            ================================================== */
 
         div[data-testid="stChatInput"] {{
@@ -357,6 +357,7 @@ def apply_theme():
             padding: 0 !important;
         }}
 
+        /* Continuous input + send button container */
         div[data-testid="stChatInput"] > div {{
             display: flex !important;
             align-items: center !important;
@@ -368,11 +369,13 @@ def apply_theme():
             padding: 0 !important;
         }}
 
-        /* Input text area */
+        /* Input text — automatically follows Dark/Light theme */
         div[data-testid="stChatInput"] textarea {{
             flex: 1 1 auto !important;
             background: transparent !important;
             color: {c["text"]} !important;
+            -webkit-text-fill-color: {c["text"]} !important;
+            caret-color: {c["text"]} !important;
             border: none !important;
             outline: none !important;
             box-shadow: none !important;
@@ -380,18 +383,20 @@ def apply_theme():
             margin: 0 !important;
         }}
 
+        /* Placeholder */
         div[data-testid="stChatInput"] textarea::placeholder {{
             color: {c["placeholder"]} !important;
+            -webkit-text-fill-color: {c["placeholder"]} !important;
             opacity: 1 !important;
         }}
 
-        /* Focus the complete input + button container */
+        /* Focus entire input */
         div[data-testid="stChatInput"]:focus-within > div {{
             border-color: {c["accent"]} !important;
             box-shadow: 0 0 0 1px {c["accent"]} !important;
         }}
 
-        /* Send button stays aligned with the input */
+        /* Send button */
         div[data-testid="stChatInput"] button {{
             background: {c["accent"]} !important;
             color: #FFFFFF !important;
