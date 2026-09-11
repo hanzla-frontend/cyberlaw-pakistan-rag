@@ -25,7 +25,7 @@ st.set_page_config(
 # ============================================================
 GOOGLE_DRIVE_URL = (
     "https://drive.google.com/file/d/"
-    "1d7xD2E1HrZBpkv16yHcqTb75C0MOzdmx/view?usp=drive_link"
+    "1d7xD2E1HrZBpkv16yHcqTb75C0MOzdmx/view?usp=sharing"
 )
 
 DATA_DIR = Path(".cyberlaw_data")
